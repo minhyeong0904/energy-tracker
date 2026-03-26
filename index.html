@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
@@ -41,401 +40,397 @@
 const {useState,useEffect,useRef} = React;
 
 const QUESTIONS = [
-{id:“sleep_hours”,label:“어젯밤 수면 시간은?”,emoji:“🌙”,min:1,max:10,markers:[“1시간”,“5시간”,“10시간”]},
-{id:“sleep_quality”,label:“수면의 질은 어땠나요?”,emoji:“💤”,min:1,max:5,markers:[“최악”,“보통”,“최고”]},
-{id:“fatigue”,label:“지금 얼마나 피곤한가요?”,emoji:“😮‍💨”,min:1,max:5,markers:[“멀쩡함”,“보통”,“너무 피곤”]},
-{id:“mood”,label:“지금 기분은요?”,emoji:“💭”,min:1,max:5,markers:[“😞”,“😐”,“😄”]},
-{id:“motivation”,label:“하고 싶은 의욕이 있나요?”,emoji:“🔥”,min:1,max:5,markers:[“전혀”,“보통”,“충만”]},
-{id:“stress”,label:“스트레스 수준은?”,emoji:“🌊”,min:1,max:5,markers:[“없음”,“보통”,“매우 높음”]},
+  {id:"sleep_hours",label:"어젯밤 수면 시간은?",emoji:"🌙",min:1,max:10,markers:["1시간","5시간","10시간"]},
+  {id:"sleep_quality",label:"수면의 질은 어땠나요?",emoji:"💤",min:1,max:5,markers:["최악","보통","최고"]},
+  {id:"fatigue",label:"지금 얼마나 피곤한가요?",emoji:"😮‍💨",min:1,max:5,markers:["멀쩡함","보통","너무 피곤"]},
+  {id:"mood",label:"지금 기분은요?",emoji:"💭",min:1,max:5,markers:["😞","😐","😄"]},
+  {id:"motivation",label:"하고 싶은 의욕이 있나요?",emoji:"🔥",min:1,max:5,markers:["전혀","보통","충만"]},
+  {id:"stress",label:"스트레스 수준은?",emoji:"🌊",min:1,max:5,markers:["없음","보통","매우 높음"]},
 ];
 
 const LEVELS = [
-{level:“최저”,emoji:“🪫”,grad:[”#f97316”,”#ef4444”],bg:”#fff1f0”,tag:”#ef4444”,activities:[“멍때리기”,“스트레칭”,“짧은 낮잠”,“아무것도 안하기”]},
-{level:“낮음”,emoji:“🔋”,grad:[”#f59e0b”,”#f97316”],bg:”#fffbeb”,tag:”#f97316”,activities:[“루틴 업무”,“주변 정리”,“제자리에 두기”,“쓸고 닦기”]},
-{level:“보통”,emoji:“⚡”,grad:[”#6366f1”,”#8b5cf6”],bg:”#f5f3ff”,tag:”#6366f1”,activities:[“집중 업무”,“자료 조사”,“운동”,“장보기”,“대청소”]},
-{level:“높음”,emoji:“🚀”,grad:[”#10b981”,”#06b6d4”],bg:”#ecfdf5”,tag:”#10b981”,activities:[“중요한 업무”,“새로운 아이디어 구상”,“운동”,“육아기획”,“미해결 과제”]},
+  {level:"최저",emoji:"🪫",grad:["#f97316","#ef4444"],bg:"#fff1f0",tag:"#ef4444",activities:["멍때리기","스트레칭","짧은 낮잠","아무것도 안하기"]},
+  {level:"낮음",emoji:"🔋",grad:["#f59e0b","#f97316"],bg:"#fffbeb",tag:"#f97316",activities:["루틴 업무","주변 정리","제자리에 두기","쓸고 닦기"]},
+  {level:"보통",emoji:"⚡",grad:["#6366f1","#8b5cf6"],bg:"#f5f3ff",tag:"#6366f1",activities:["집중 업무","자료 조사","운동","장보기","대청소"]},
+  {level:"높음",emoji:"🚀",grad:["#10b981","#06b6d4"],bg:"#ecfdf5",tag:"#10b981",activities:["중요한 업무","새로운 아이디어 구상","운동","육아기획","미해결 과제"]},
 ];
 
 function matchColor(matched,total){
-if(total===0)return null;
-const r=matched/total;
-if(r>=0.6)return{dot:”#3b82f6”,bg:”#eff6ff”,label:“잘 맞음”};
-if(r>=0.3)return{dot:”#eab308”,bg:”#fefce8”,label:“비슷”};
-return{dot:”#ef4444”,bg:”#fef2f2”,label:“안 맞음”};
+  if(total===0)return null;
+  const r=matched/total;
+  if(r>=0.6)return{dot:"#3b82f6",bg:"#eff6ff",label:"잘 맞음"};
+  if(r>=0.3)return{dot:"#eab308",bg:"#fefce8",label:"비슷"};
+  return{dot:"#ef4444",bg:"#fef2f2",label:"안 맞음"};
 }
 function calcLevel(a){
-const{sleep_hours,sleep_quality,fatigue,mood,motivation,stress}=a;
-const s=((sleep_hours/10)*5+sleep_quality+(6-fatigue)+mood+motivation+(6-stress))/6;
-return s<=2?0:s<=3?1:s<=4?2:3;
+  const{sleep_hours,sleep_quality,fatigue,mood,motivation,stress}=a;
+  const s=((sleep_hours/10)*5+sleep_quality+(6-fatigue)+mood+motivation+(6-stress))/6;
+  return s<=2?0:s<=3?1:s<=4?2:3;
 }
 function todayKey(){return new Date().toISOString().slice(0,10);}
 function loadData(){
-try{const r=localStorage.getItem(“et_v6”);return r?JSON.parse(r):{history:{},tasks:[]};}
-catch{return{history:{},tasks:[]};}
+  try{const r=localStorage.getItem("et_v6");return r?JSON.parse(r):{history:{},tasks:[]};}
+  catch{return{history:{},tasks:[]};}
 }
 function useSwipeLR(onLeft,onRight){
-const ref=useRef(null),sx=useRef(null);
-useEffect(()=>{
-const el=ref.current;if(!el)return;
-const s=e=>{sx.current=(e.touches?.[0]||e).clientX;};
-const end=e=>{
-if(sx.current===null)return;
-const dx=(e.changedTouches?.[0]||e).clientX-sx.current;
-if(Math.abs(dx)>60)dx<0?onLeft?.():onRight?.();
-sx.current=null;
-};
-el.addEventListener(“touchstart”,s,{passive:true});
-el.addEventListener(“touchend”,end,{passive:true});
-return()=>{el.removeEventListener(“touchstart”,s);el.removeEventListener(“touchend”,end);};
-},[onLeft,onRight]);
-return ref;
+  const ref=useRef(null),sx=useRef(null);
+  useEffect(()=>{
+    const el=ref.current;if(!el)return;
+    const s=e=>{sx.current=(e.touches?.[0]||e).clientX;};
+    const end=e=>{
+      if(sx.current===null)return;
+      const dx=(e.changedTouches?.[0]||e).clientX-sx.current;
+      if(Math.abs(dx)>60)dx<0?onLeft?.():onRight?.();
+      sx.current=null;
+    };
+    el.addEventListener("touchstart",s,{passive:true});
+    el.addEventListener("touchend",end,{passive:true});
+    return()=>{el.removeEventListener("touchstart",s);el.removeEventListener("touchend",end);};
+  },[onLeft,onRight]);
+  return ref;
 }
 
 function DayDetail({dateKey,history,getMatchStats,memo,tasks}){
-const rec=history[dateKey],lvl=rec?LEVELS[rec.level]:null;
-const stats=getMatchStats(dateKey),mc=stats.total>0?matchColor(stats.matched,stats.total):null;
-const dayMemo=memo[dateKey]||””;
-const dayTasks=tasks.filter(t=>(t.date||todayKey())===dateKey);
-return(
-<div style={{background:mc?mc.dot+“11”:lvl?lvl.bg:”#f8fafc”,borderRadius:16,padding:16,border:`1.5px solid ${mc?mc.dot+"44":lvl?lvl.tag+"33":"#e2e8f0"}`}}>
-<div style={{display:“flex”,alignItems:“center”,justifyContent:“space-between”,marginBottom:12}}>
-<div style={{display:“flex”,alignItems:“center”,gap:8}}>
-<span style={{fontSize:22}}>{lvl?lvl.emoji:“❓”}</span>
-<div>
-<div style={{fontSize:11,color:”#94a3b8”}}>{dateKey}</div>
-<div style={{fontWeight:800,color:lvl?lvl.tag:”#94a3b8”,fontSize:14}}>{lvl?lvl.level:“기록 없음”}</div>
-</div>
-</div>
-{mc&&<div style={{display:“flex”,alignItems:“center”,gap:5,background:mc.bg,borderRadius:20,padding:“4px 12px”,border:`1px solid ${mc.dot}33`}}><div style={{width:7,height:7,borderRadius:“50%”,background:mc.dot}}/><span style={{fontSize:12,color:mc.dot,fontWeight:700}}>{mc.label}</span></div>}
-</div>
-{dayTasks.length>0&&<div style={{marginBottom:10}}>
-<div style={{fontSize:11,color:”#94a3b8”,fontWeight:700,marginBottom:6}}>할 일</div>
-<div style={{display:“flex”,flexDirection:“column”,gap:5}}>
-{dayTasks.map(t=>(
-<div key={t.id} style={{display:“flex”,alignItems:“center”,gap:8,background:”#fff”,borderRadius:10,padding:“7px 10px”,border:“1px solid #f1f5f9”}}>
-<span style={{fontSize:13}}>{t.urgent?“⭐”:“⚪”}</span>
-<span style={{fontSize:13,color:”#334155”,flex:1}}>{t.text}</span>
-{t.matched===true&&<span style={{fontSize:11,color:”#3b82f6”,fontWeight:700}}>👌 딱좋아</span>}
-{t.matched===false&&<span style={{fontSize:11,color:”#ef4444”,fontWeight:700}}>🙅 무리야</span>}
-</div>
-))}
-</div>
-</div>}
-{dayTasks.length===0&&<div style={{fontSize:12,color:”#cbd5e1”,marginBottom:10}}>할 일 없음</div>}
-{dayMemo?<div style={{background:”#fff”,borderRadius:10,padding:“8px 12px”,fontSize:13,color:”#475569”,lineHeight:1.6,border:“1px solid #e2e8f0”}}>📝 {dayMemo}</div>
-:<div style={{fontSize:12,color:”#cbd5e1”}}>메모 없음</div>}
-</div>
-);
+  const rec=history[dateKey],lvl=rec?LEVELS[rec.level]:null;
+  const stats=getMatchStats(dateKey),mc=stats.total>0?matchColor(stats.matched,stats.total):null;
+  const dayMemo=memo[dateKey]||"";
+  const dayTasks=tasks.filter(t=>(t.date||todayKey())===dateKey);
+  return(
+    <div style={{background:mc?mc.dot+"11":lvl?lvl.bg:"#f8fafc",borderRadius:16,padding:16,border:`1.5px solid ${mc?mc.dot+"44":lvl?lvl.tag+"33":"#e2e8f0"}`}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:22}}>{lvl?lvl.emoji:"❓"}</span>
+          <div>
+            <div style={{fontSize:11,color:"#94a3b8"}}>{dateKey}</div>
+            <div style={{fontWeight:800,color:lvl?lvl.tag:"#94a3b8",fontSize:14}}>{lvl?lvl.level:"기록 없음"}</div>
+          </div>
+        </div>
+        {mc&&<div style={{display:"flex",alignItems:"center",gap:5,background:mc.bg,borderRadius:20,padding:"4px 12px",border:`1px solid ${mc.dot}33`}}><div style={{width:7,height:7,borderRadius:"50%",background:mc.dot}}/><span style={{fontSize:12,color:mc.dot,fontWeight:700}}>{mc.label}</span></div>}
+      </div>
+      {dayTasks.length>0&&<div style={{marginBottom:10}}>
+        <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:6}}>할 일</div>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {dayTasks.map(t=>(
+            <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",borderRadius:10,padding:"7px 10px",border:"1px solid #f1f5f9"}}>
+              <span style={{fontSize:13}}>{t.urgent?"⭐":"⚪"}</span>
+              <span style={{fontSize:13,color:"#334155",flex:1}}>{t.text}</span>
+              {t.matched===true&&<span style={{fontSize:11,color:"#3b82f6",fontWeight:700}}>👌 딱좋아</span>}
+              {t.matched===false&&<span style={{fontSize:11,color:"#ef4444",fontWeight:700}}>🙅 무리야</span>}
+            </div>
+          ))}
+        </div>
+      </div>}
+      {dayTasks.length===0&&<div style={{fontSize:12,color:"#cbd5e1",marginBottom:10}}>할 일 없음</div>}
+      {dayMemo?<div style={{background:"#fff",borderRadius:10,padding:"8px 12px",fontSize:13,color:"#475569",lineHeight:1.6,border:"1px solid #e2e8f0"}}>📝 {dayMemo}</div>
+      :<div style={{fontSize:12,color:"#cbd5e1"}}>메모 없음</div>}
+    </div>
+  );
 }
 
 function MonthCalendar({history,getMatchStats,memo,tasks}){
-const now=new Date();
-const [year,setYear]=useState(now.getFullYear());
-const [month,setMonth]=useState(now.getMonth());
-const [selected,setSelected]=useState(null);
-const firstDay=new Date(year,month,1).getDay();
-const daysInMonth=new Date(year,month+1,0).getDate();
-const cells=[];
-for(let i=0;i<firstDay;i++)cells.push(null);
-for(let d=1;d<=daysInMonth;d++)cells.push(d);
-function keyOf(d){return `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;}
-function prev(){if(month===0){setYear(y=>y-1);setMonth(11);}else setMonth(m=>m-1);setSelected(null);}
-function next(){if(month===11){setYear(y=>y+1);setMonth(0);}else setMonth(m=>m+1);setSelected(null);}
-return(
-<div>
-<div style={{display:“flex”,alignItems:“center”,justifyContent:“space-between”,marginBottom:16}}>
-<button onClick={prev} style={{background:“none”,border:“none”,fontSize:24,cursor:“pointer”,color:”#6366f1”,padding:“0 8px”}}>‹</button>
-<div style={{fontWeight:800,fontSize:16,color:”#1e293b”}}>{year}년 {month+1}월</div>
-<button onClick={next} style={{background:“none”,border:“none”,fontSize:24,cursor:“pointer”,color:”#6366f1”,padding:“0 8px”}}>›</button>
-</div>
-<div style={{display:“grid”,gridTemplateColumns:“repeat(7,1fr)”,marginBottom:6}}>
-{[“일”,“월”,“화”,“수”,“목”,“금”,“토”].map(d=><div key={d} style={{textAlign:“center”,fontSize:11,color:”#94a3b8”,fontWeight:700,padding:“4px 0”}}>{d}</div>)}
-</div>
-<div style={{display:“grid”,gridTemplateColumns:“repeat(7,1fr)”,gap:4}}>
-{cells.map((d,i)=>{
-if(!d)return<div key={i}/>;
-const k=keyOf(d),rec=history[k],l=rec?LEVELS[rec.level]:null;
-const stats=getMatchStats(k),mc=stats.total>0?matchColor(stats.matched,stats.total):null;
-const isToday=k===todayKey(),isSel=selected===d;
-return(
-<button key={i} onClick={()=>setSelected(isSel?null:d)}
-style={{aspectRatio:“1”,borderRadius:12,border:isSel?“2px solid #6366f1”:isToday?“2px solid #c7d2fe”:mc?`2px solid ${mc.dot}55`:“2px solid transparent”,background:mc?mc.dot+“33”:l?`linear-gradient(135deg,${l.grad[0]}22,${l.grad[1]}11)`:”#f8fafc”,cursor:“pointer”,display:“flex”,flexDirection:“column”,alignItems:“center”,justifyContent:“center”,gap:1}}>
-<span style={{fontSize:11,fontWeight:isToday?800:500,color:isToday?”#6366f1”:”#334155”}}>{d}</span>
-{l&&<span style={{fontSize:13}}>{l.emoji}</span>}
-</button>
-);
-})}
-</div>
-<div style={{display:“flex”,gap:12,justifyContent:“center”,marginTop:14,marginBottom:4}}>
-{[[”#3b82f6”,“잘 맞음”],[”#eab308”,“비슷”],[”#ef4444”,“안 맞음”]].map(([c,label])=>(
-<div key={label} style={{display:“flex”,alignItems:“center”,gap:4}}>
-<div style={{width:10,height:10,borderRadius:3,background:c+“55”,border:`1.5px solid ${c}`}}/>
-<span style={{fontSize:11,color:”#64748b”}}>{label}</span>
-</div>
-))}
-</div>
-{selected&&<div style={{marginTop:12}}><DayDetail dateKey={keyOf(selected)} history={history} getMatchStats={getMatchStats} memo={memo} tasks={tasks}/></div>}
-</div>
-);
+  const now=new Date();
+  const [year,setYear]=useState(now.getFullYear());
+  const [month,setMonth]=useState(now.getMonth());
+  const [selected,setSelected]=useState(null);
+  const firstDay=new Date(year,month,1).getDay();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const cells=[];
+  for(let i=0;i<firstDay;i++)cells.push(null);
+  for(let d=1;d<=daysInMonth;d++)cells.push(d);
+  function keyOf(d){return `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;}
+  function prev(){if(month===0){setYear(y=>y-1);setMonth(11);}else setMonth(m=>m-1);setSelected(null);}
+  function next(){if(month===11){setYear(y=>y+1);setMonth(0);}else setMonth(m=>m+1);setSelected(null);}
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+        <button onClick={prev} style={{background:"none",border:"none",fontSize:24,cursor:"pointer",color:"#6366f1",padding:"0 8px"}}>‹</button>
+        <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{year}년 {month+1}월</div>
+        <button onClick={next} style={{background:"none",border:"none",fontSize:24,cursor:"pointer",color:"#6366f1",padding:"0 8px"}}>›</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:6}}>
+        {["일","월","화","수","목","금","토"].map(d=><div key={d} style={{textAlign:"center",fontSize:11,color:"#94a3b8",fontWeight:700,padding:"4px 0"}}>{d}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+        {cells.map((d,i)=>{
+          if(!d)return<div key={i}/>;
+          const k=keyOf(d),rec=history[k],l=rec?LEVELS[rec.level]:null;
+          const stats=getMatchStats(k),mc=stats.total>0?matchColor(stats.matched,stats.total):null;
+          const isToday=k===todayKey(),isSel=selected===d;
+          return(
+            <button key={i} onClick={()=>setSelected(isSel?null:d)}
+              style={{aspectRatio:"1",borderRadius:12,border:isSel?"2px solid #6366f1":isToday?"2px solid #c7d2fe":mc?`2px solid ${mc.dot}55`:"2px solid transparent",background:mc?mc.dot+"33":l?`linear-gradient(135deg,${l.grad[0]}22,${l.grad[1]}11)`:"#f8fafc",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
+              <span style={{fontSize:11,fontWeight:isToday?800:500,color:isToday?"#6366f1":"#334155"}}>{d}</span>
+              {l&&<span style={{fontSize:13}}>{l.emoji}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{display:"flex",gap:12,justifyContent:"center",marginTop:14,marginBottom:4}}>
+        {[["#3b82f6","잘 맞음"],["#eab308","비슷"],["#ef4444","안 맞음"]].map(([c,label])=>(
+          <div key={label} style={{display:"flex",alignItems:"center",gap:4}}>
+            <div style={{width:10,height:10,borderRadius:3,background:c+"55",border:`1.5px solid ${c}`}}/>
+            <span style={{fontSize:11,color:"#64748b"}}>{label}</span>
+          </div>
+        ))}
+      </div>
+      {selected&&<div style={{marginTop:12}}><DayDetail dateKey={keyOf(selected)} history={history} getMatchStats={getMatchStats} memo={memo} tasks={tasks}/></div>}
+    </div>
+  );
 }
 
 function TaskCard({task,onUrgent,onMatch,onDelete,onDateChange}){
-const startX=useRef(null);
-const [offset,setOffset]=useState(0);
-const [deleted,setDeleted]=useState(false);
-const [editingDate,setEditingDate]=useState(false);
-function onTS(e){startX.current=e.touches[0].clientX;}
-function onTM(e){if(startX.current===null)return;const dx=e.touches[0].clientX-startX.current;if(dx<0)setOffset(Math.max(dx,-80));}
-function onTE(){if(offset<-60){setDeleted(true);setTimeout(onDelete,250);}else setOffset(0);startX.current=null;}
-if(deleted)return null;
-const isToday=(task.date||todayKey())===todayKey();
-return(
-<div style={{position:“relative”,overflow:“hidden”,borderRadius:16}}>
-<div style={{position:“absolute”,right:0,top:0,bottom:0,width:80,background:”#ef4444”,display:“flex”,alignItems:“center”,justifyContent:“center”,color:”#fff”,fontSize:22,borderRadius:16}}>🗑️</div>
-<div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
-style={{background:”#fff”,borderRadius:16,padding:“14px 16px”,boxShadow:“0 1px 6px #0001”,transform:`translateX(${offset}px)`,transition:offset===0?“transform .25s”:“none”,position:“relative”,zIndex:1}}>
-<div style={{display:“flex”,alignItems:“center”,gap:10,marginBottom:10}}>
-<button onClick={onUrgent} style={{background:“none”,border:“none”,fontSize:22,cursor:“pointer”,padding:0,lineHeight:1,flexShrink:0}}>
-{task.urgent?“⭐”:“⚪”}
-</button>
-<span style={{fontSize:14,color:”#1e293b”,flex:1,lineHeight:1.5}}>{task.text}</span>
-<button onClick={onDelete} style={{background:“none”,border:“none”,color:”#cbd5e1”,cursor:“pointer”,fontSize:18,flexShrink:0}}>×</button>
-</div>
-<div style={{paddingLeft:32,marginBottom:8}}>
-{editingDate
-?<input type=“date” defaultValue={task.date||todayKey()} onChange={e=>{onDateChange(e.target.value);setEditingDate(false);}} onBlur={()=>setEditingDate(false)} autoFocus style={{fontSize:12,border:“1.5px solid #6366f1”,borderRadius:8,padding:“3px 8px”,color:”#6366f1”,outline:“none”}}/>
-:<button onClick={()=>setEditingDate(true)} style={{background:isToday?”#eff6ff”:”#f1f5f9”,border:“none”,borderRadius:20,padding:“3px 10px”,fontSize:12,color:isToday?”#6366f1”:”#64748b”,fontWeight:600,cursor:“pointer”}}>📅 {isToday?“오늘”:task.date}</button>
-}
-</div>
-<div style={{paddingLeft:32,display:“flex”,gap:8}}>
-<button onClick={()=>onMatch(true)} style={{fontSize:12,padding:“5px 14px”,borderRadius:20,border:`1.5px solid ${task.matched===true?"#3b82f6":"#e2e8f0"}`,background:task.matched===true?”#eff6ff”:”#f8fafc”,color:task.matched===true?”#3b82f6”:”#94a3b8”,cursor:“pointer”,fontWeight:700}}>👌 딱좋아</button>
-<button onClick={()=>onMatch(false)} style={{fontSize:12,padding:“5px 14px”,borderRadius:20,border:`1.5px solid ${task.matched===false?"#ef4444":"#e2e8f0"}`,background:task.matched===false?”#fef2f2”:”#f8fafc”,color:task.matched===false?”#ef4444”:”#94a3b8”,cursor:“pointer”,fontWeight:700}}>🙅 무리야</button>
-</div>
-</div>
-</div>
-);
+  const startX=useRef(null);
+  const [offset,setOffset]=useState(0);
+  const [deleted,setDeleted]=useState(false);
+  const [editingDate,setEditingDate]=useState(false);
+  function onTS(e){startX.current=e.touches[0].clientX;}
+  function onTM(e){if(startX.current===null)return;const dx=e.touches[0].clientX-startX.current;if(dx<0)setOffset(Math.max(dx,-80));}
+  function onTE(){if(offset<-60){setDeleted(true);setTimeout(onDelete,250);}else setOffset(0);startX.current=null;}
+  if(deleted)return null;
+  const isToday=(task.date||todayKey())===todayKey();
+  return(
+    <div style={{position:"relative",overflow:"hidden",borderRadius:16}}>
+      <div style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"#ef4444",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:22,borderRadius:16}}>🗑️</div>
+      <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
+        style={{background:"#fff",borderRadius:16,padding:"14px 16px",boxShadow:"0 1px 6px #0001",transform:`translateX(${offset}px)`,transition:offset===0?"transform .25s":"none",position:"relative",zIndex:1}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <button onClick={onUrgent} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",padding:0,lineHeight:1,flexShrink:0}}>
+            {task.urgent?"⭐":"⚪"}
+          </button>
+          <span style={{fontSize:14,color:"#1e293b",flex:1,lineHeight:1.5}}>{task.text}</span>
+          <button onClick={onDelete} style={{background:"none",border:"none",color:"#cbd5e1",cursor:"pointer",fontSize:18,flexShrink:0}}>×</button>
+        </div>
+        <div style={{paddingLeft:32,marginBottom:8}}>
+          {editingDate
+            ?<input type="date" defaultValue={task.date||todayKey()} onChange={e=>{onDateChange(e.target.value);setEditingDate(false);}} onBlur={()=>setEditingDate(false)} autoFocus style={{fontSize:12,border:"1.5px solid #6366f1",borderRadius:8,padding:"3px 8px",color:"#6366f1",outline:"none"}}/>
+            :<button onClick={()=>setEditingDate(true)} style={{background:isToday?"#eff6ff":"#f1f5f9",border:"none",borderRadius:20,padding:"3px 10px",fontSize:12,color:isToday?"#6366f1":"#64748b",fontWeight:600,cursor:"pointer"}}>📅 {isToday?"오늘":task.date}</button>
+          }
+        </div>
+        <div style={{paddingLeft:32,display:"flex",gap:8}}>
+          <button onClick={()=>onMatch(true)} style={{fontSize:12,padding:"5px 14px",borderRadius:20,border:`1.5px solid ${task.matched===true?"#3b82f6":"#e2e8f0"}`,background:task.matched===true?"#eff6ff":"#f8fafc",color:task.matched===true?"#3b82f6":"#94a3b8",cursor:"pointer",fontWeight:700}}>👌 딱좋아</button>
+          <button onClick={()=>onMatch(false)} style={{fontSize:12,padding:"5px 14px",borderRadius:20,border:`1.5px solid ${task.matched===false?"#ef4444":"#e2e8f0"}`,background:task.matched===false?"#fef2f2":"#f8fafc",color:task.matched===false?"#ef4444":"#94a3b8",cursor:"pointer",fontWeight:700}}>🙅 무리야</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function App(){
-const [data,setData]=useState(loadData);
-const [view,setView]=useState(“main”);
-const [step,setStep]=useState(0);
-const [answers,setAnswers]=useState({});
-const [newTask,setNewTask]=useState(””);
-const [historyTab,setHistoryTab]=useState(“weekly”);
-const [tab,setTab]=useState(“home”);
-const [memo,setMemo]=useState(()=>{try{const r=localStorage.getItem(“et_memo”);return r?JSON.parse(r):{};}catch{return{};}});
-const [expandedDay,setExpandedDay]=useState(null);
-const today=todayKey();
-const todayRec=data.history[today];
-const lvl=todayRec!=null?LEVELS[todayRec.level]:null;
-useEffect(()=>{try{localStorage.setItem(“et_v6”,JSON.stringify(data));}catch{}},[data]);
-useEffect(()=>{try{localStorage.setItem(“et_memo”,JSON.stringify(memo));}catch{}},[memo]);
-function updateMemo(k,t){setMemo(m=>({…m,[k]:t}));}
-function getMatchStats(k){
-const dt=data.tasks.filter(t=>(t.date||today)===k&&t.matched!==null);
-return{matched:dt.filter(t=>t.matched===true).length,total:dt.length};
-}
-function answer(val){
-const q=QUESTIONS[step],next={…answers,[q.id]:val};
-if(step<QUESTIONS.length-1){setAnswers(next);setStep(s=>s+1);}
-else{const li=calcLevel(next);setData(d=>({…d,history:{…d.history,[today]:{answers:next,level:li,time:new Date().toISOString()}}}));setAnswers(next);setView(“result”);}
-}
-function addTask(){
-if(!newTask.trim())return;
-setData(d=>({…d,tasks:[…d.tasks,{id:Date.now(),text:newTask.trim(),urgent:false,matched:null,date:today}]}));
-setNewTask(””);
-}
-function toggleUrgent(id){
-setData(d=>{const tasks=d.tasks.map(t=>t.id===id?{…t,urgent:!t.urgent}:t);return{…d,tasks:[…tasks.filter(t=>t.urgent),…tasks.filter(t=>!t.urgent)]};});
-}
-function setMatch(id,v){setData(d=>({…d,tasks:d.tasks.map(t=>t.id===id?{…t,matched:t.matched===v?null:v}:t)}));}
-function setTaskDate(id,date){setData(d=>({…d,tasks:d.tasks.map(t=>t.id===id?{…t,date}:t)}));}
-function delTask(id){setData(d=>({…d,tasks:d.tasks.filter(t=>t.id!==id)}));}
-const checkRef=useSwipeLR(()=>step<QUESTIONS.length-1&&setStep(s=>s+1),()=>step>0&&setStep(s=>s-1));
-const histKeys=Object.keys(data.history).sort().reverse();
-const todayStats=getMatchStats(today);
-const todayMC=matchColor(todayStats.matched,todayStats.total);
+  const [data,setData]=useState(loadData);
+  const [view,setView]=useState("main");
+  const [step,setStep]=useState(0);
+  const [answers,setAnswers]=useState({});
+  const [newTask,setNewTask]=useState("");
+  const [historyTab,setHistoryTab]=useState("weekly");
+  const [tab,setTab]=useState("home");
+  const [memo,setMemo]=useState(()=>{try{const r=localStorage.getItem("et_memo");return r?JSON.parse(r):{};}catch{return{};}});
+  const [expandedDay,setExpandedDay]=useState(null);
+  const today=todayKey();
+  const todayRec=data.history[today];
+  const lvl=todayRec!=null?LEVELS[todayRec.level]:null;
+  useEffect(()=>{try{localStorage.setItem("et_v6",JSON.stringify(data));}catch{}},[data]);
+  useEffect(()=>{try{localStorage.setItem("et_memo",JSON.stringify(memo));}catch{}},[memo]);
+  function updateMemo(k,t){setMemo(m=>({...m,[k]:t}));}
+  function getMatchStats(k){
+    const dt=data.tasks.filter(t=>(t.date||today)===k&&t.matched!==null);
+    return{matched:dt.filter(t=>t.matched===true).length,total:dt.length};
+  }
+  function answer(val){
+    const q=QUESTIONS[step],next={...answers,[q.id]:val};
+    if(step<QUESTIONS.length-1){setAnswers(next);setStep(s=>s+1);}
+    else{const li=calcLevel(next);setData(d=>({...d,history:{...d.history,[today]:{answers:next,level:li,time:new Date().toISOString()}}}));setAnswers(next);setView("result");}
+  }
+  function addTask(){
+    if(!newTask.trim())return;
+    setData(d=>({...d,tasks:[...d.tasks,{id:Date.now(),text:newTask.trim(),urgent:false,matched:null,date:today}]}));
+    setNewTask("");
+  }
+  function toggleUrgent(id){
+    setData(d=>{const tasks=d.tasks.map(t=>t.id===id?{...t,urgent:!t.urgent}:t);return{...d,tasks:[...tasks.filter(t=>t.urgent),...tasks.filter(t=>!t.urgent)]};});
+  }
+  function setMatch(id,v){setData(d=>({...d,tasks:d.tasks.map(t=>t.id===id?{...t,matched:t.matched===v?null:v}:t)}));}
+  function setTaskDate(id,date){setData(d=>({...d,tasks:d.tasks.map(t=>t.id===id?{...t,date}:t)}));}
+  function delTask(id){setData(d=>({...d,tasks:d.tasks.filter(t=>t.id!==id)}));}
+  const checkRef=useSwipeLR(()=>step<QUESTIONS.length-1&&setStep(s=>s+1),()=>step>0&&setStep(s=>s-1));
+  const histKeys=Object.keys(data.history).sort().reverse();
+  const todayStats=getMatchStats(today);
+  const todayMC=matchColor(todayStats.matched,todayStats.total);
 
-if(view===“check”){
-const q=QUESTIONS[step];
-return(
-<div ref={checkRef} style={{minHeight:“100dvh”,background:”#0f0f1a”,display:“flex”,flexDirection:“column”,padding:“48px 24px 32px”,userSelect:“none”}}>
-<div style={{height:4,background:”#1e1e2e”,borderRadius:4,marginBottom:32}}>
-<div style={{height:4,width:`${(step/QUESTIONS.length)*100}%`,background:“linear-gradient(90deg,#6366f1,#06b6d4)”,borderRadius:4,transition:“width .3s”}}/>
-</div>
-<div style={{color:”#6366f1”,fontWeight:700,fontSize:13,marginBottom:8}}>{step+1} / {QUESTIONS.length}</div>
-<div style={{fontSize:52,marginBottom:12}}>{q.emoji}</div>
-<div style={{fontSize:22,fontWeight:800,color:”#fff”,marginBottom:40,lineHeight:1.4}}>{q.label}</div>
-<div style={{display:“flex”,gap:10,justifyContent:“center”,flexWrap:“wrap”,flex:1,alignContent:“flex-start”}}>
-{Array.from({length:q.max-q.min+1},(_,i)=>i+q.min).map(v=>(
-<button key={v} onClick={()=>answer(v)}
-style={{width:60,height:60,borderRadius:18,border:“2px solid #2a2a3e”,background:”#1a1a2e”,fontSize:20,fontWeight:800,cursor:“pointer”,color:”#e2e8f0”}}
-onTouchStart={e=>{e.currentTarget.style.background=”#6366f1”;e.currentTarget.style.color=”#fff”;e.currentTarget.style.transform=“scale(0.93)”;}}
-onTouchEnd={e=>{e.currentTarget.style.background=”#1a1a2e”;e.currentTarget.style.color=”#e2e8f0”;e.currentTarget.style.transform=“scale(1)”;}}>
-{v}
-</button>
-))}
-</div>
-{q.markers&&<div style={{display:“flex”,justifyContent:“space-between”,color:”#4a4a6a”,fontSize:12,marginTop:16}}>{q.markers.map((m,i)=><span key={i}>{m}</span>)}</div>}
-<div style={{display:“flex”,justifyContent:“space-between”,marginTop:32}}>
-<button onClick={()=>step>0?setStep(s=>s-1):setView(“main”)} style={{background:“none”,border:“none”,color:”#4a4a6a”,fontSize:14,cursor:“pointer”}}>← 이전</button>
-<div style={{color:”#2a2a3e”,fontSize:12}}>← 스와이프 →</div>
-</div>
-</div>
-);
-}
-
-if(view===“result”){
-const rec=data.history[today],l=LEVELS[rec.level];
-return(
-<div style={{minHeight:“100dvh”,background:`linear-gradient(160deg,${l.grad[0]}22,${l.grad[1]}11)`,display:“flex”,flexDirection:“column”,alignItems:“center”,justifyContent:“center”,padding:“40px 24px”,textAlign:“center”}}>
-<div style={{fontSize:72,marginBottom:8}}>{l.emoji}</div>
-<div style={{fontSize:14,color:”#64748b”,marginBottom:4}}>오늘의 에너지</div>
-<div style={{fontSize:40,fontWeight:900,background:`linear-gradient(135deg,${l.grad[0]},${l.grad[1]})`,WebkitBackgroundClip:“text”,WebkitTextFillColor:“transparent”,marginBottom:28}}>{l.level}</div>
-<div style={{background:”#fff”,borderRadius:20,padding:“20px 24px”,width:“100%”,maxWidth:360,marginBottom:28,boxShadow:“0 4px 20px #0001”}}>
-<div style={{fontSize:13,color:”#94a3b8”,marginBottom:12}}>추천 활동</div>
-<div style={{display:“flex”,flexWrap:“wrap”,gap:8,justifyContent:“center”}}>
-{l.activities.map((a,i)=><span key={i} style={{background:l.bg,color:l.tag,borderRadius:20,padding:“6px 14px”,fontSize:13,fontWeight:600}}>{a}</span>)}
-</div>
-</div>
-<button onClick={()=>{setView(“main”);setTab(“tasks”);}} style={{background:`linear-gradient(135deg,${l.grad[0]},${l.grad[1]})`,border:“none”,borderRadius:16,color:”#fff”,fontWeight:800,fontSize:16,cursor:“pointer”,padding:“14px 0”,width:“100%”,maxWidth:360,marginBottom:14}}>할 일 체크하러 가기 →</button>
-<button onClick={()=>{setView(“main”);setTab(“home”);}} style={{background:“none”,border:“none”,color:”#94a3b8”,fontSize:14,cursor:“pointer”}}>홈으로</button>
-</div>
-);
-}
-
-return(
-<div style={{minHeight:“100dvh”,background:”#f8fafc”,display:“flex”,flexDirection:“column”,maxWidth:480,margin:“0 auto”}}>
-<div style={{flex:1,overflowY:“auto”,padding:“24px 16px 96px”}}>
-
-```
-    {tab==="home"&&(
-      <>
-        <div style={{fontSize:22,fontWeight:800,color:"#1e293b",marginBottom:4}}>⚡ 에너지 트래커</div>
-        <div style={{fontSize:13,color:"#94a3b8",marginBottom:24}}>{today}</div>
-        <div style={{borderRadius:24,padding:24,marginBottom:20,background:lvl?`linear-gradient(135deg,${lvl.grad[0]},${lvl.grad[1]})`:"linear-gradient(135deg,#6366f1,#8b5cf6)",boxShadow:lvl?`0 8px 24px ${lvl.grad[0]}55`:"0 8px 24px #6366f155",color:"#fff"}}>
-          {lvl?(
-            <>
-              <div style={{fontSize:48,marginBottom:4}}>{lvl.emoji}</div>
-              <div style={{fontSize:13,opacity:0.8}}>오늘의 에너지</div>
-              <div style={{fontSize:36,fontWeight:900}}>{lvl.level}</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:12}}>
-                {lvl.activities.map((a,i)=><span key={i} style={{background:"#ffffff33",borderRadius:20,padding:"4px 12px",fontSize:12}}>{a}</span>)}
-              </div>
-              <button onClick={()=>{setStep(0);setAnswers({});setView("check");}} style={{marginTop:16,background:"#ffffff33",border:"none",borderRadius:20,padding:"8px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>다시 체크</button>
-            </>
-          ):(
-            <div style={{textAlign:"center",padding:"8px 0"}}>
-              <div style={{fontSize:48,marginBottom:8}}>🔍</div>
-              <div style={{fontSize:16,fontWeight:700,marginBottom:16}}>오늘 에너지 체크 안 했어요</div>
-              <button onClick={()=>{setStep(0);setAnswers({});setView("check");}} style={{background:"#fff",border:"none",borderRadius:20,padding:"12px 28px",color:"#6366f1",fontSize:15,fontWeight:800,cursor:"pointer"}}>지금 체크하기 →</button>
-            </div>
-          )}
+  if(view==="check"){
+    const q=QUESTIONS[step];
+    return(
+      <div ref={checkRef} style={{minHeight:"100dvh",background:"#0f0f1a",display:"flex",flexDirection:"column",padding:"48px 24px 32px",userSelect:"none"}}>
+        <div style={{height:4,background:"#1e1e2e",borderRadius:4,marginBottom:32}}>
+          <div style={{height:4,width:`${(step/QUESTIONS.length)*100}%`,background:"linear-gradient(90deg,#6366f1,#06b6d4)",borderRadius:4,transition:"width .3s"}}/>
         </div>
-        {todayStats.total>0&&todayMC&&(
-          <div style={{background:todayMC.bg,borderRadius:16,padding:"12px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:10,height:10,borderRadius:"50%",background:todayMC.dot,flexShrink:0}}/>
-            <div style={{fontSize:13,color:"#475569"}}>오늘 할 일 <b>{todayStats.total}개</b> 중 <b>{todayStats.matched}개</b>가 에너지에 맞아요</div>
-            <div style={{marginLeft:"auto",fontWeight:800,color:todayMC.dot,fontSize:13}}>{todayMC.label}</div>
-          </div>
-        )}
-        <div style={{background:"#fff",borderRadius:20,padding:18,boxShadow:"0 2px 10px #0001"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>할 일 {data.tasks.length>0&&<span style={{color:"#6366f1"}}>{data.tasks.length}</span>}</div>
-            <button onClick={()=>setTab("tasks")} style={{background:"none",border:"none",color:"#6366f1",fontSize:13,fontWeight:700,cursor:"pointer"}}>전체보기 →</button>
-          </div>
-          {data.tasks.length===0
-            ?<div style={{color:"#cbd5e1",fontSize:13,textAlign:"center",padding:"12px 0"}}>할 일을 추가해보세요</div>
-            :data.tasks.slice(0,3).map(t=>(
-              <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #f1f5f9"}}>
-                <span style={{fontSize:16}}>{t.urgent?"⭐":"⚪"}</span>
-                <span style={{fontSize:14,color:"#334155",flex:1}}>{t.text}</span>
-                {t.matched===true&&<span style={{fontSize:13,color:"#3b82f6",fontWeight:700}}>👌 딱좋아</span>}
-                {t.matched===false&&<span style={{fontSize:13,color:"#ef4444",fontWeight:700}}>🙅 무리야</span>}
-              </div>
-            ))
-          }
-        </div>
-        <div style={{background:"#fff",borderRadius:20,padding:18,marginTop:16,boxShadow:"0 2px 10px #0001"}}>
-          <div style={{fontSize:15,fontWeight:700,color:"#1e293b",marginBottom:10}}>📝 오늘의 메모</div>
-          <textarea value={memo[today]||""} onChange={e=>updateMemo(today,e.target.value)} placeholder="오늘 하루 짧게 기록해보세요..."
-            style={{width:"100%",minHeight:80,border:"1.5px solid #e2e8f0",borderRadius:12,padding:"10px 12px",fontSize:14,color:"#334155",resize:"none",outline:"none",lineHeight:1.6}}/>
-        </div>
-      </>
-    )}
-
-    {tab==="tasks"&&(
-      <>
-        <div style={{fontSize:20,fontWeight:800,color:"#1e293b",marginBottom:20}}>📋 할 일</div>
-        <div style={{display:"flex",gap:8,marginBottom:20}}>
-          <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()} placeholder="할 일 추가..." style={{flex:1,border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 14px",fontSize:15,outline:"none",background:"#fff"}}/>
-          <button onClick={addTask} style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",border:"none",borderRadius:14,padding:"12px 18px",fontSize:20,fontWeight:800,cursor:"pointer"}}>+</button>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {data.tasks.length===0&&<div style={{color:"#cbd5e1",textAlign:"center",marginTop:32}}>아직 할 일이 없어요</div>}
-          {data.tasks.map(t=><TaskCard key={t.id} task={t} onUrgent={()=>toggleUrgent(t.id)} onMatch={v=>setMatch(t.id,v)} onDelete={()=>delTask(t.id)} onDateChange={date=>setTaskDate(t.id,date)}/>)}
-        </div>
-      </>
-    )}
-
-    {tab==="history"&&(
-      <>
-        <div style={{fontSize:20,fontWeight:800,color:"#1e293b",marginBottom:20}}>📅 기록</div>
-        <div style={{display:"flex",gap:8,marginBottom:20}}>
-          {["weekly","monthly"].map(t=>(
-            <button key={t} onClick={()=>{setHistoryTab(t);setExpandedDay(null);}} style={{flex:1,padding:"10px 0",borderRadius:20,border:"none",background:historyTab===t?"linear-gradient(135deg,#6366f1,#8b5cf6)":"#e2e8f0",color:historyTab===t?"#fff":"#64748b",fontWeight:700,cursor:"pointer"}}>
-              {t==="weekly"?"최근 7일":"월별"}
+        <div style={{color:"#6366f1",fontWeight:700,fontSize:13,marginBottom:8}}>{step+1} / {QUESTIONS.length}</div>
+        <div style={{fontSize:52,marginBottom:12}}>{q.emoji}</div>
+        <div style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:40,lineHeight:1.4}}>{q.label}</div>
+        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",flex:1,alignContent:"flex-start"}}>
+          {Array.from({length:q.max-q.min+1},(_,i)=>i+q.min).map(v=>(
+            <button key={v} onClick={()=>answer(v)}
+              style={{width:60,height:60,borderRadius:18,border:"2px solid #2a2a3e",background:"#1a1a2e",fontSize:20,fontWeight:800,cursor:"pointer",color:"#e2e8f0"}}
+              onTouchStart={e=>{e.currentTarget.style.background="#6366f1";e.currentTarget.style.color="#fff";e.currentTarget.style.transform="scale(0.93)";}}
+              onTouchEnd={e=>{e.currentTarget.style.background="#1a1a2e";e.currentTarget.style.color="#e2e8f0";e.currentTarget.style.transform="scale(1)";}}>
+              {v}
             </button>
           ))}
         </div>
-        {historyTab==="weekly"&&(
+        {q.markers&&<div style={{display:"flex",justifyContent:"space-between",color:"#4a4a6a",fontSize:12,marginTop:16}}>{q.markers.map((m,i)=><span key={i}>{m}</span>)}</div>}
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:32}}>
+          <button onClick={()=>step>0?setStep(s=>s-1):setView("main")} style={{background:"none",border:"none",color:"#4a4a6a",fontSize:14,cursor:"pointer"}}>← 이전</button>
+          <div style={{color:"#2a2a3e",fontSize:12}}>← 스와이프 →</div>
+        </div>
+      </div>
+    );
+  }
+
+  if(view==="result"){
+    const rec=data.history[today],l=LEVELS[rec.level];
+    return(
+      <div style={{minHeight:"100dvh",background:`linear-gradient(160deg,${l.grad[0]}22,${l.grad[1]}11)`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",textAlign:"center"}}>
+        <div style={{fontSize:72,marginBottom:8}}>{l.emoji}</div>
+        <div style={{fontSize:14,color:"#64748b",marginBottom:4}}>오늘의 에너지</div>
+        <div style={{fontSize:40,fontWeight:900,background:`linear-gradient(135deg,${l.grad[0]},${l.grad[1]})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",marginBottom:28}}>{l.level}</div>
+        <div style={{background:"#fff",borderRadius:20,padding:"20px 24px",width:"100%",maxWidth:360,marginBottom:28,boxShadow:"0 4px 20px #0001"}}>
+          <div style={{fontSize:13,color:"#94a3b8",marginBottom:12}}>추천 활동</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center"}}>
+            {l.activities.map((a,i)=><span key={i} style={{background:l.bg,color:l.tag,borderRadius:20,padding:"6px 14px",fontSize:13,fontWeight:600}}>{a}</span>)}
+          </div>
+        </div>
+        <button onClick={()=>{setView("main");setTab("tasks");}} style={{background:`linear-gradient(135deg,${l.grad[0]},${l.grad[1]})`,border:"none",borderRadius:16,color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer",padding:"14px 0",width:"100%",maxWidth:360,marginBottom:14}}>할 일 체크하러 가기 →</button>
+        <button onClick={()=>{setView("main");setTab("home");}} style={{background:"none",border:"none",color:"#94a3b8",fontSize:14,cursor:"pointer"}}>홈으로</button>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{minHeight:"100dvh",background:"#f8fafc",display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto"}}>
+      <div style={{flex:1,overflowY:"auto",padding:"24px 16px 96px"}}>
+
+        {tab==="home"&&(
           <>
-            {histKeys.slice(0,7).length===0&&<div style={{color:"#94a3b8",textAlign:"center",marginTop:48}}>기록이 없어요</div>}
-            {histKeys.slice(0,7).map(k=>{
-              const r=data.history[k],l=LEVELS[r.level];
-              const stats=getMatchStats(k),mc=stats.total>0?matchColor(stats.matched,stats.total):null;
-              const isExp=expandedDay===k;
-              return(
-                <div key={k} style={{marginBottom:10}}>
-                  <button onClick={()=>setExpandedDay(isExp?null:k)}
-                    style={{width:"100%",background:mc?mc.dot+"22":"#fff",borderRadius:isExp?"16px 16px 0 0":16,padding:"14px 18px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 6px #0001",border:mc?`1.5px solid ${mc.dot}44`:"1.5px solid transparent",cursor:"pointer",textAlign:"left"}}>
-                    <span style={{fontSize:20}}>{l.emoji}</span>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,color:"#94a3b8"}}>{k}</div>
-                      <div style={{fontWeight:800,background:`linear-gradient(135deg,${l.grad[0]},${l.grad[1]})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{l.level}</div>
-                    </div>
-                    {mc&&<div style={{display:"flex",alignItems:"center",gap:6,background:mc.bg,borderRadius:20,padding:"4px 12px"}}><div style={{width:8,height:8,borderRadius:"50%",background:mc.dot}}/><span style={{fontSize:12,color:mc.dot,fontWeight:700}}>{mc.label}</span></div>}
-                    <span style={{fontSize:14,color:"#94a3b8",marginLeft:4}}>{isExp?"▲":"▼"}</span>
-                  </button>
-                  {isExp&&<div style={{borderRadius:"0 0 16px 16px",overflow:"hidden",border:mc?`1.5px solid ${mc.dot}44`:"1.5px solid #e2e8f0",borderTop:"none"}}><DayDetail dateKey={k} history={data.history} getMatchStats={getMatchStats} memo={memo} tasks={data.tasks}/></div>}
+            <div style={{fontSize:22,fontWeight:800,color:"#1e293b",marginBottom:4}}>⚡ 에너지 트래커</div>
+            <div style={{fontSize:13,color:"#94a3b8",marginBottom:24}}>{today}</div>
+            <div style={{borderRadius:24,padding:24,marginBottom:20,background:lvl?`linear-gradient(135deg,${lvl.grad[0]},${lvl.grad[1]})`:"linear-gradient(135deg,#6366f1,#8b5cf6)",boxShadow:lvl?`0 8px 24px ${lvl.grad[0]}55`:"0 8px 24px #6366f155",color:"#fff"}}>
+              {lvl?(
+                <>
+                  <div style={{fontSize:48,marginBottom:4}}>{lvl.emoji}</div>
+                  <div style={{fontSize:13,opacity:0.8}}>오늘의 에너지</div>
+                  <div style={{fontSize:36,fontWeight:900}}>{lvl.level}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:12}}>
+                    {lvl.activities.map((a,i)=><span key={i} style={{background:"#ffffff33",borderRadius:20,padding:"4px 12px",fontSize:12}}>{a}</span>)}
+                  </div>
+                  <button onClick={()=>{setStep(0);setAnswers({});setView("check");}} style={{marginTop:16,background:"#ffffff33",border:"none",borderRadius:20,padding:"8px 20px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>다시 체크</button>
+                </>
+              ):(
+                <div style={{textAlign:"center",padding:"8px 0"}}>
+                  <div style={{fontSize:48,marginBottom:8}}>🔍</div>
+                  <div style={{fontSize:16,fontWeight:700,marginBottom:16}}>오늘 에너지 체크 안 했어요</div>
+                  <button onClick={()=>{setStep(0);setAnswers({});setView("check");}} style={{background:"#fff",border:"none",borderRadius:20,padding:"12px 28px",color:"#6366f1",fontSize:15,fontWeight:800,cursor:"pointer"}}>지금 체크하기 →</button>
                 </div>
-              );
-            })}
+              )}
+            </div>
+            {todayStats.total>0&&todayMC&&(
+              <div style={{background:todayMC.bg,borderRadius:16,padding:"12px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:todayMC.dot,flexShrink:0}}/>
+                <div style={{fontSize:13,color:"#475569"}}>오늘 할 일 <b>{todayStats.total}개</b> 중 <b>{todayStats.matched}개</b>가 에너지에 맞아요</div>
+                <div style={{marginLeft:"auto",fontWeight:800,color:todayMC.dot,fontSize:13}}>{todayMC.label}</div>
+              </div>
+            )}
+            <div style={{background:"#fff",borderRadius:20,padding:18,boxShadow:"0 2px 10px #0001"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>할 일 {data.tasks.length>0&&<span style={{color:"#6366f1"}}>{data.tasks.length}</span>}</div>
+                <button onClick={()=>setTab("tasks")} style={{background:"none",border:"none",color:"#6366f1",fontSize:13,fontWeight:700,cursor:"pointer"}}>전체보기 →</button>
+              </div>
+              {data.tasks.length===0
+                ?<div style={{color:"#cbd5e1",fontSize:13,textAlign:"center",padding:"12px 0"}}>할 일을 추가해보세요</div>
+                :data.tasks.slice(0,3).map(t=>(
+                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #f1f5f9"}}>
+                    <span style={{fontSize:16}}>{t.urgent?"⭐":"⚪"}</span>
+                    <span style={{fontSize:14,color:"#334155",flex:1}}>{t.text}</span>
+                    {t.matched===true&&<span style={{fontSize:13,color:"#3b82f6",fontWeight:700}}>👌 딱좋아</span>}
+                    {t.matched===false&&<span style={{fontSize:13,color:"#ef4444",fontWeight:700}}>🙅 무리야</span>}
+                  </div>
+                ))
+              }
+            </div>
+            <div style={{background:"#fff",borderRadius:20,padding:18,marginTop:16,boxShadow:"0 2px 10px #0001"}}>
+              <div style={{fontSize:15,fontWeight:700,color:"#1e293b",marginBottom:10}}>📝 오늘의 메모</div>
+              <textarea value={memo[today]||""} onChange={e=>updateMemo(today,e.target.value)} placeholder="오늘 하루 짧게 기록해보세요..."
+                style={{width:"100%",minHeight:80,border:"1.5px solid #e2e8f0",borderRadius:12,padding:"10px 12px",fontSize:14,color:"#334155",resize:"none",outline:"none",lineHeight:1.6}}/>
+            </div>
           </>
         )}
-        {historyTab==="monthly"&&<MonthCalendar history={data.history} getMatchStats={getMatchStats} memo={memo} tasks={data.tasks}/>}
-      </>
-    )}
-  </div>
 
-  <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#fff",borderTop:"1px solid #f1f5f9",display:"flex",padding:"10px 0 20px",zIndex:100}}>
-    {[["home","🏠","홈"],["tasks","📋","할 일"],["history","📅","기록"]].map(([id,emoji,label])=>(
-      <button key={id} onClick={()=>setTab(id)} style={{flex:1,background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-        <span style={{fontSize:22}}>{emoji}</span>
-        <span style={{fontSize:11,fontWeight:700,color:tab===id?"#6366f1":"#94a3b8"}}>{label}</span>
-        {tab===id&&<div style={{width:4,height:4,borderRadius:"50%",background:"#6366f1"}}/>}
-      </button>
-    ))}
-  </nav>
-</div>
-```
+        {tab==="tasks"&&(
+          <>
+            <div style={{fontSize:20,fontWeight:800,color:"#1e293b",marginBottom:20}}>📋 할 일</div>
+            <div style={{display:"flex",gap:8,marginBottom:20}}>
+              <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()} placeholder="할 일 추가..." style={{flex:1,border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 14px",fontSize:15,outline:"none",background:"#fff"}}/>
+              <button onClick={addTask} style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",border:"none",borderRadius:14,padding:"12px 18px",fontSize:20,fontWeight:800,cursor:"pointer"}}>+</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {data.tasks.length===0&&<div style={{color:"#cbd5e1",textAlign:"center",marginTop:32}}>아직 할 일이 없어요</div>}
+              {data.tasks.map(t=><TaskCard key={t.id} task={t} onUrgent={()=>toggleUrgent(t.id)} onMatch={v=>setMatch(t.id,v)} onDelete={()=>delTask(t.id)} onDateChange={date=>setTaskDate(t.id,date)}/>)}
+            </div>
+          </>
+        )}
 
-);
+        {tab==="history"&&(
+          <>
+            <div style={{fontSize:20,fontWeight:800,color:"#1e293b",marginBottom:20}}>📅 기록</div>
+            <div style={{display:"flex",gap:8,marginBottom:20}}>
+              {["weekly","monthly"].map(t=>(
+                <button key={t} onClick={()=>{setHistoryTab(t);setExpandedDay(null);}} style={{flex:1,padding:"10px 0",borderRadius:20,border:"none",background:historyTab===t?"linear-gradient(135deg,#6366f1,#8b5cf6)":"#e2e8f0",color:historyTab===t?"#fff":"#64748b",fontWeight:700,cursor:"pointer"}}>
+                  {t==="weekly"?"최근 7일":"월별"}
+                </button>
+              ))}
+            </div>
+            {historyTab==="weekly"&&(
+              <>
+                {histKeys.slice(0,7).length===0&&<div style={{color:"#94a3b8",textAlign:"center",marginTop:48}}>기록이 없어요</div>}
+                {histKeys.slice(0,7).map(k=>{
+                  const r=data.history[k],l=LEVELS[r.level];
+                  const stats=getMatchStats(k),mc=stats.total>0?matchColor(stats.matched,stats.total):null;
+                  const isExp=expandedDay===k;
+                  return(
+                    <div key={k} style={{marginBottom:10}}>
+                      <button onClick={()=>setExpandedDay(isExp?null:k)}
+                        style={{width:"100%",background:mc?mc.dot+"22":"#fff",borderRadius:isExp?"16px 16px 0 0":16,padding:"14px 18px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 1px 6px #0001",border:mc?`1.5px solid ${mc.dot}44`:"1.5px solid transparent",cursor:"pointer",textAlign:"left"}}>
+                        <span style={{fontSize:20}}>{l.emoji}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,color:"#94a3b8"}}>{k}</div>
+                          <div style={{fontWeight:800,background:`linear-gradient(135deg,${l.grad[0]},${l.grad[1]})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{l.level}</div>
+                        </div>
+                        {mc&&<div style={{display:"flex",alignItems:"center",gap:6,background:mc.bg,borderRadius:20,padding:"4px 12px"}}><div style={{width:8,height:8,borderRadius:"50%",background:mc.dot}}/><span style={{fontSize:12,color:mc.dot,fontWeight:700}}>{mc.label}</span></div>}
+                        <span style={{fontSize:14,color:"#94a3b8",marginLeft:4}}>{isExp?"▲":"▼"}</span>
+                      </button>
+                      {isExp&&<div style={{borderRadius:"0 0 16px 16px",overflow:"hidden",border:mc?`1.5px solid ${mc.dot}44`:"1.5px solid #e2e8f0",borderTop:"none"}}><DayDetail dateKey={k} history={data.history} getMatchStats={getMatchStats} memo={memo} tasks={data.tasks}/></div>}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            {historyTab==="monthly"&&<MonthCalendar history={data.history} getMatchStats={getMatchStats} memo={memo} tasks={data.tasks}/>}
+          </>
+        )}
+      </div>
+
+      <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#fff",borderTop:"1px solid #f1f5f9",display:"flex",padding:"10px 0 20px",zIndex:100}}>
+        {[["home","🏠","홈"],["tasks","📋","할 일"],["history","📅","기록"]].map(([id,emoji,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{flex:1,background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+            <span style={{fontSize:22}}>{emoji}</span>
+            <span style={{fontSize:11,fontWeight:700,color:tab===id?"#6366f1":"#94a3b8"}}>{label}</span>
+            {tab===id&&<div style={{width:4,height:4,borderRadius:"50%",background:"#6366f1"}}/>}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
 }
 
-ReactDOM.createRoot(document.getElementById(“root”)).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
-
 </body>
 </html>
