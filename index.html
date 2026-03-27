@@ -37,7 +37,23 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useRef} = React;
+const {useState,useEffect,useRef,useCallback} = React;
+
+const STORAGE_KEY_PREFIX = "et_";
+
+async function cloudSave(password, payload) {
+  try {
+    await window.storage.set(STORAGE_KEY_PREFIX + password, JSON.stringify(payload), false);
+    return true;
+  } catch { return false; }
+}
+
+async function cloudLoad(password) {
+  try {
+    const r = await window.storage.get(STORAGE_KEY_PREFIX + password, false);
+    return r ? JSON.parse(r.value) : null;
+  } catch { return null; }
+}
 
 const QUESTIONS = [
   {id:"sleep_hours",label:"어젯밤 수면 시간은?",emoji:"🌙",min:1,max:10,markers:["1시간","5시간","10시간"]},
@@ -68,9 +84,61 @@ function calcLevel(a){
   return s<=2?0:s<=3?1:s<=4?2:3;
 }
 function todayKey(){return new Date().toISOString().slice(0,10);}
-function loadData(){
-  try{const r=localStorage.getItem("et_v6");return r?JSON.parse(r):{history:{},tasks:[]};}
-  catch{return{history:{},tasks:[]};}
+function loadLocal() {
+  try { const r = localStorage.getItem("et_v6"); return r ? JSON.parse(r) : { history:{}, tasks:[] }; }
+  catch { return { history:{}, tasks:[] }; }
+}
+function loadMemoLocal() {
+  try { const r = localStorage.getItem("et_memo"); return r ? JSON.parse(r) : {}; } catch { return {}; }
+}
+
+function LockScreen({ onUnlock }) {
+  const [pw, setPw] = useState("");
+  const [mode, setMode] = useState("enter"); // enter | setup
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit() {
+    if (!pw.trim()) return;
+    setLoading(true);
+    setError("");
+    const existing = await cloudLoad(pw.trim());
+    if (existing) {
+      onUnlock(pw.trim(), existing.data, existing.memo);
+    } else {
+      // 새 비밀번호 — 로컬 데이터 있으면 가져오기
+      const localData = loadLocal();
+      const localMemo = loadMemoLocal();
+      await cloudSave(pw.trim(), { data: localData, memo: localMemo });
+      onUnlock(pw.trim(), localData, localMemo);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{minHeight:"100dvh",background:"linear-gradient(135deg,#6366f1,#06b6d4)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
+      <div style={{fontSize:64,marginBottom:16}}>⚡</div>
+      <div style={{fontSize:24,fontWeight:900,color:"#fff",marginBottom:8}}>에너지 트래커</div>
+      <div style={{fontSize:14,color:"#ffffff99",marginBottom:40}}>데이터를 안전하게 보관해요</div>
+      <div style={{background:"#fff",borderRadius:24,padding:28,width:"100%",maxWidth:360,boxShadow:"0 8px 32px #0003"}}>
+        <div style={{fontSize:15,fontWeight:700,color:"#1e293b",marginBottom:6}}>🔐 비밀번호 입력</div>
+        <div style={{fontSize:12,color:"#94a3b8",marginBottom:16}}>처음이라면 새 비밀번호를 설정해요. 잊어버리면 데이터를 찾을 수 없어요!</div>
+        <input
+          type="password"
+          value={pw}
+          onChange={e=>setPw(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+          placeholder="비밀번호 입력..."
+          style={{width:"100%",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"12px 14px",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:8}}
+        />
+        {error && <div style={{fontSize:12,color:"#ef4444",marginBottom:8}}>{error}</div>}
+        <button onClick={handleSubmit} disabled={loading}
+          style={{width:"100%",background:"linear-gradient(135deg,#6366f1,#8b5cf6)",border:"none",borderRadius:12,padding:"14px 0",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer"}}>
+          {loading ? "확인 중..." : "시작하기 →"}
+        </button>
+      </div>
+    </div>
+  );
 }
 function useSwipeLR(onLeft,onRight){
   const ref=useRef(null),sx=useRef(null);
@@ -216,20 +284,52 @@ function TaskCard({task,onUrgent,onMatch,onDelete,onDateChange}){
 }
 
 function App(){
-  const [data,setData]=useState(loadData);
+  const [password, setPassword] = useState(() => localStorage.getItem("et_pw") || "");
+  const [data,setData]=useState({history:{},tasks:[]});
+  const [memo,setMemo]=useState({});
+  const [ready, setReady] = useState(false);
   const [view,setView]=useState("main");
   const [step,setStep]=useState(0);
   const [answers,setAnswers]=useState({});
   const [newTask,setNewTask]=useState("");
   const [historyTab,setHistoryTab]=useState("weekly");
   const [tab,setTab]=useState("home");
-  const [memo,setMemo]=useState(()=>{try{const r=localStorage.getItem("et_memo");return r?JSON.parse(r):{};}catch{return{};}});
+  const [memo,setMemo]=useState({});
   const [expandedDay,setExpandedDay]=useState(null);
   const today=todayKey();
   const todayRec=data.history[today];
   const lvl=todayRec!=null?LEVELS[todayRec.level]:null;
-  useEffect(()=>{try{localStorage.setItem("et_v6",JSON.stringify(data));}catch{}},[data]);
-  useEffect(()=>{try{localStorage.setItem("et_memo",JSON.stringify(memo));}catch{}},[memo]);
+  function handleUnlock(pw, initialData, initialMemo) {
+    localStorage.setItem("et_pw", pw);
+    setPassword(pw);
+    setData(initialData);
+    setMemo(initialMemo);
+    setReady(true);
+  }
+
+  useEffect(()=>{
+    if (!password) return;
+    // 자동 로그인
+    cloudLoad(password).then(r => {
+      if (r) { setData(r.data); setMemo(r.memo||{}); }
+      setReady(true);
+    });
+  },[]);
+
+  useEffect(()=>{
+    if (!ready || !password) return;
+    cloudSave(password, { data, memo });
+    try{localStorage.setItem("et_v6",JSON.stringify(data));}catch{}
+  },[data]);
+
+  useEffect(()=>{
+    if (!ready || !password) return;
+    cloudSave(password, { data, memo });
+    try{localStorage.setItem("et_memo",JSON.stringify(memo));}catch{}
+  },[memo]);
+
+  if (!ready) return <LockScreen onUnlock={handleUnlock} />;
+
   function updateMemo(k,t){setMemo(m=>({...m,[k]:t}));}
   function getMatchStats(k){
     const dt=data.tasks.filter(t=>(t.date||today)===k&&t.matched!==null);
