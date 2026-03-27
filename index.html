@@ -40,14 +40,41 @@ textarea,input{font-family:inherit;}
 <script type="text/babel">
 const {useState,useEffect,useRef} = React;
 
-// ── 클라우드 저장/불러오기 (window.storage) ──
-async function cloudSave(pw, data, memo) {
-  try { await window.storage.set("et_" + pw, JSON.stringify({data, memo})); return true; }
-  catch { return false; }
+// ── JSONBin 클라우드 저장/불러오기 ──
+const JSONBIN_KEY = "$2a$10$VqM3o.OIyTj7QEN9ePtjI.G5cBXoYxLCX1ArvksmGuqTNcxZDy5Oa"; // ← 여기에 X-MASTER-KEY 붙여넣기
+const JSONBIN_URL = "https://api.jsonbin.io/v3/b";
+
+async function cloudSave(binId, data, memo) {
+  try {
+    await fetch(`${JSONBIN_URL}/${binId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_KEY },
+      body: JSON.stringify({ data, memo })
+    });
+    return true;
+  } catch { return false; }
 }
-async function cloudLoad(pw) {
-  try { const r = await window.storage.get("et_" + pw); return r ? JSON.parse(r.value) : null; }
-  catch { return null; }
+
+async function cloudLoad(binId) {
+  try {
+    const r = await fetch(`${JSONBIN_URL}/${binId}/latest`, {
+      headers: { "X-Master-Key": JSONBIN_KEY }
+    });
+    const json = await r.json();
+    return json.record || null;
+  } catch { return null; }
+}
+
+async function cloudCreate(initData, initMemo) {
+  try {
+    const r = await fetch(JSONBIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_KEY, "X-Bin-Private": "true" },
+      body: JSON.stringify({ data: initData, memo: initMemo })
+    });
+    const json = await r.json();
+    return json.metadata?.id || null;
+  } catch { return null; }
 }
 
 const QUESTIONS = [
@@ -107,17 +134,20 @@ function LockScreen({onUnlock}) {
   async function handleSubmit() {
     if (!pw.trim()) return;
     setLoading(true); setError("");
-    const saved = await cloudLoad(pw.trim());
-    if (saved) {
-      onUnlock(pw.trim(), saved.data || {history:{},tasks:[]}, saved.memo || {});
-    } else {
-      // 새 비밀번호 — 로컬 데이터 가져오기
-      let localData = {history:{},tasks:[]}, localMemo = {};
-      try { const r = localStorage.getItem("et_v6"); if(r) localData = JSON.parse(r); } catch {}
-      try { const r = localStorage.getItem("et_memo"); if(r) localMemo = JSON.parse(r); } catch {}
-      await cloudSave(pw.trim(), localData, localMemo);
-      onUnlock(pw.trim(), localData, localMemo);
+    // 로컬에 binId 저장된 경우
+    const savedBinId = localStorage.getItem("et_bin_" + pw.trim());
+    if (savedBinId) {
+      const saved = await cloudLoad(savedBinId);
+      if (saved) { onUnlock(pw.trim(), savedBinId, saved.data||{history:{},tasks:[]}, saved.memo||{}); setLoading(false); return; }
     }
+    // 새 bin 생성
+    let localData = {history:{},tasks:[]}, localMemo = {};
+    try { const r=localStorage.getItem("et_v6"); if(r) localData=JSON.parse(r); } catch {}
+    try { const r=localStorage.getItem("et_memo"); if(r) localMemo=JSON.parse(r); } catch {}
+    const binId = await cloudCreate(localData, localMemo);
+    if (!binId) { setError("저장 실패. 다시 시도해주세요."); setLoading(false); return; }
+    localStorage.setItem("et_bin_" + pw.trim(), binId);
+    onUnlock(pw.trim(), binId, localData, localMemo);
     setLoading(false);
   }
 
@@ -274,6 +304,7 @@ function TaskCard({task, onUrgent, onMatch, onDelete, onDateChange}) {
 // ── 메인 앱 ──
 function App() {
   const [password, setPassword] = useState(null);
+  const [binId, setBinId] = useState(null);
   const [data, setData] = useState({history:{}, tasks:[]});
   const [memo, setMemo] = useState({});
   const [ready, setReady] = useState(false);
