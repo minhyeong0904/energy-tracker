@@ -29,6 +29,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;overscroll-behavior:none;}
@@ -40,41 +41,24 @@ textarea,input{font-family:inherit;}
 <script type="text/babel">
 const {useState,useEffect,useRef} = React;
 
-// ── JSONBin 클라우드 저장/불러오기 ──
-const JSONBIN_KEY = "$2a$10$VqM3o.OIyTj7QEN9ePtjI.G5cBXoYxLCX1ArvksmGuqTNcxZDy5Oa"; // ← 여기에 X-MASTER-KEY 붙여넣기
-const JSONBIN_URL = "https://api.jsonbin.io/v3/b";
+// ── Supabase 설정 ──
+const SUPABASE_URL = "https://ynjohdnpxeborztjhvpy.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inluam9oZG5weGVib3J6dGpodnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTEzNjUsImV4cCI6MjA5MDEyNzM2NX0.2Qn4ZvP4tIetCWnZDRTqjY1CVKSmJ-VBm1X8Tb-cYnA";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-async function cloudSave(binId, data, memo) {
-  try {
-    await fetch(`${JSONBIN_URL}/${binId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_KEY },
-      body: JSON.stringify({ data, memo })
-    });
-    return true;
-  } catch { return false; }
+async function dbLoad(userId) {
+  const { data } = await supabase.from("tracker_data").select("data, memo").eq("user_id", userId).single();
+  return data || null;
 }
-
-async function cloudLoad(binId) {
-  try {
-    const r = await fetch(`${JSONBIN_URL}/${binId}/latest`, {
-      headers: { "X-Master-Key": JSONBIN_KEY }
-    });
-    const json = await r.json();
-    return json.record || null;
-  } catch { return null; }
+async function dbSave(userId, data, memo) {
+  await supabase.from("tracker_data").upsert({ user_id: userId, data, memo }, { onConflict: "user_id" });
 }
-
-async function cloudCreate(initData, initMemo) {
-  try {
-    const r = await fetch(JSONBIN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_KEY, "X-Bin-Private": "true" },
-      body: JSON.stringify({ data: initData, memo: initMemo })
-    });
-    const json = await r.json();
-    return json.metadata?.id || null;
-  } catch { return null; }
+async function signInWithGoogle() {
+  await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } });
+}
+async function signOut() {
+  await supabase.auth.signOut();
+  window.location.reload();
 }
 
 const QUESTIONS = [
@@ -125,47 +109,20 @@ function useSwipeLR(onLeft, onRight) {
   return ref;
 }
 
-// ── 잠금 화면 ──
-function LockScreen({onUnlock}) {
-  const [pw, setPw] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleSubmit() {
-    if (!pw.trim()) return;
-    setLoading(true); setError("");
-    // 로컬에 binId 저장된 경우
-    const savedBinId = localStorage.getItem("et_bin_" + pw.trim());
-    if (savedBinId) {
-      const saved = await cloudLoad(savedBinId);
-      if (saved) { onUnlock(pw.trim(), savedBinId, saved.data||{history:{},tasks:[]}, saved.memo||{}); setLoading(false); return; }
-    }
-    // 새 bin 생성
-    let localData = {history:{},tasks:[]}, localMemo = {};
-    try { const r=localStorage.getItem("et_v6"); if(r) localData=JSON.parse(r); } catch {}
-    try { const r=localStorage.getItem("et_memo"); if(r) localMemo=JSON.parse(r); } catch {}
-    const binId = await cloudCreate(localData, localMemo);
-    if (!binId) { setError("저장 실패. 다시 시도해주세요."); setLoading(false); return; }
-    localStorage.setItem("et_bin_" + pw.trim(), binId);
-    onUnlock(pw.trim(), binId, localData, localMemo);
-    setLoading(false);
-  }
-
+// ── Google 로그인 화면 ──
+function LoginScreen() {
   return (
     <div style={{minHeight:"100dvh",background:"linear-gradient(135deg,#6366f1,#06b6d4)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
       <div style={{fontSize:72,marginBottom:12}}>⚡</div>
       <div style={{fontSize:24,fontWeight:900,color:"#fff",marginBottom:6}}>에너지 트래커</div>
-      <div style={{fontSize:13,color:"#ffffff99",marginBottom:40}}>데이터를 안전하게 보관해요</div>
-      <div style={{background:"#fff",borderRadius:24,padding:28,width:"100%",maxWidth:360,boxShadow:"0 8px 32px #0003"}}>
-        <div style={{fontSize:15,fontWeight:700,color:"#1e293b",marginBottom:6}}>🔐 비밀번호</div>
-        <div style={{fontSize:12,color:"#94a3b8",marginBottom:16}}>처음이라면 새 비밀번호를 설정해요.<br/>비밀번호를 잊으면 데이터를 찾을 수 없어요!</div>
-        <input type="password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
-          placeholder="비밀번호 입력..."
-          style={{width:"100%",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"12px 14px",fontSize:15,outline:"none",marginBottom:8}}/>
-        {error && <div style={{fontSize:12,color:"#ef4444",marginBottom:8}}>{error}</div>}
-        <button onClick={handleSubmit} disabled={loading}
-          style={{width:"100%",background:"linear-gradient(135deg,#6366f1,#8b5cf6)",border:"none",borderRadius:12,padding:"14px 0",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer",opacity:loading?0.7:1}}>
-          {loading?"확인 중...":"시작하기 →"}
+      <div style={{fontSize:13,color:"#ffffff99",marginBottom:40}}>나의 에너지를 기록하고 관리해요</div>
+      <div style={{background:"#fff",borderRadius:24,padding:28,width:"100%",maxWidth:360,boxShadow:"0 8px 32px #0003",textAlign:"center"}}>
+        <div style={{fontSize:15,fontWeight:700,color:"#1e293b",marginBottom:6}}>시작하기</div>
+        <div style={{fontSize:12,color:"#94a3b8",marginBottom:20}}>Google 계정으로 로그인하면<br/>데이터가 안전하게 저장돼요</div>
+        <button onClick={signInWithGoogle}
+          style={{width:"100%",background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"14px 0",fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,color:"#334155"}}>
+          <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/></svg>
+          Google로 로그인
         </button>
       </div>
     </div>
@@ -303,8 +260,7 @@ function TaskCard({task, onUrgent, onMatch, onDelete, onDateChange}) {
 
 // ── 메인 앱 ──
 function App() {
-  const [password, setPassword] = useState(null);
-  const [binId, setBinId] = useState(null);
+  const [user, setUser] = useState(null);
   const [data, setData] = useState({history:{}, tasks:[]});
   const [memo, setMemo] = useState({});
   const [ready, setReady] = useState(false);
@@ -378,7 +334,7 @@ function App() {
   const todayMC = matchColor(todayStats.matched, todayStats.total);
 
   if (!ready) return <div style={{minHeight:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#6366f1,#06b6d4)"}}><div style={{fontSize:48}}>⚡</div></div>;
-  if (!password) return <LockScreen onUnlock={handleUnlock}/>;
+  if (!user) return <LoginScreen />;
 
   if (view==="check") {
     const q = QUESTIONS[step];
@@ -434,7 +390,10 @@ function App() {
 
         {tab==="home" && <>
           <div style={{fontSize:22,fontWeight:800,color:"#1e293b",marginBottom:4}}>⚡ 에너지 트래커</div>
-          <div style={{fontSize:13,color:"#94a3b8",marginBottom:24}}>{today}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+            <div style={{fontSize:13,color:"#94a3b8"}}>{today}</div>
+            <button onClick={signOut} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:20,padding:"4px 12px",fontSize:12,color:"#94a3b8",cursor:"pointer"}}>로그아웃</button>
+          </div>
           <div style={{borderRadius:24,padding:24,marginBottom:20,background:lvl?`linear-gradient(135deg,${lvl.grad[0]},${lvl.grad[1]})`:"linear-gradient(135deg,#6366f1,#8b5cf6)",boxShadow:lvl?`0 8px 24px ${lvl.grad[0]}55`:"0 8px 24px #6366f155",color:"#fff"}}>
             {lvl ? <>
               <div style={{fontSize:48,marginBottom:4}}>{lvl.emoji}</div>
