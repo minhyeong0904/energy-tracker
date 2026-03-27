@@ -25,74 +25,84 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    const SUPABASE_URL="https://ynjohdnpxeborztjhvpy.supabase.co";
-    const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inluam9oZG5weGVib3J6dGpodnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTEzNjUsImV4cCI6MjA5MDEyNzM2NX0.2Qn4ZvP4tIetCWnZDRTqjY1CVKSmJ-VBm1X8Tb-cYnA";
-    const HOME_URL=window.location.origin + "/";
-    const statusText=document.getElementById("statusText");
-    const errorBox=document.getElementById("errorBox");
-    const retryBtn=document.getElementById("retryBtn");
+    const SUPABASE_URL = "https://ynjohdnpxeborztjhvpy.supabase.co";
+    const SUPABASE_ANON_KEY = "여기에_실제_anon_public_key";
+    const HOME_URL = window.location.origin + "/";
+
+    const statusText = document.getElementById("statusText");
+    const errorBox = document.getElementById("errorBox");
+    const retryBtn = document.getElementById("retryBtn");
 
     function showError(msg){
-      statusText.textContent="로그인 완료를 마무리하지 못했어.";
-      errorBox.style.display="block";
-      errorBox.textContent=msg;
-      retryBtn.style.display="block";
+      statusText.textContent = "로그인 완료를 마무리하지 못했어.";
+      errorBox.style.display = "block";
+      errorBox.textContent = msg;
+      retryBtn.style.display = "block";
     }
 
-    retryBtn.onclick=()=>{ window.location.href = HOME_URL; };
+    retryBtn.onclick = () => {
+      window.location.replace(HOME_URL);
+    };
 
-    async function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
+    function timeoutPromise(ms, label){
+      return new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(label)), ms)
+      );
+    }
 
     async function run(){
-  try{
-    if(SUPABASE_ANON_KEY==="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inluam9oZG5weGVib3J6dGpodnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTEzNjUsImV4cCI6MjA5MDEyNzM2NX0.2Qn4ZvP4tIetCWnZDRTqjY1CVKSmJ-VBm1X8Tb-cYnA"){
-      showError("callback.html 안의 SUPABASE_ANON_KEY를 실제 anon public key로 바꿔줘.");
-      return;
-    }
+      try{
+        if(!window.supabase || typeof window.supabase.createClient !== "function"){
+          showError("Supabase 라이브러리를 불러오지 못했어.");
+          return;
+        }
 
-    if(!window.supabase || typeof window.supabase.createClient!=="function"){
-      showError("Supabase 라이브러리를 불러오지 못했어.");
-      return;
-    }
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false,
+            storageKey: "et_auth"
+          }
+        });
 
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth:{
-        persistSession:true,
-        autoRefreshToken:true,
-        detectSessionInUrl:false,
-        storageKey:"et_auth"
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+
+        if(!code){
+          showError("URL에 code 값이 없어. Redirect URL을 다시 확인해줘.");
+          return;
+        }
+
+        statusText.textContent = "로그인 코드를 세션으로 바꾸는 중...";
+        const exchangeResult = await Promise.race([
+          sb.auth.exchangeCodeForSession(code),
+          timeoutPromise(10000, "exchange timeout")
+        ]);
+
+        if(exchangeResult.error) throw exchangeResult.error;
+
+        statusText.textContent = "세션 저장 확인 중...";
+        const sessionResult = await Promise.race([
+          sb.auth.getSession(),
+          timeoutPromise(10000, "session timeout")
+        ]);
+
+        if(sessionResult.error) throw sessionResult.error;
+
+        if(sessionResult.data?.session?.user){
+          window.location.replace(HOME_URL);
+          return;
+        }
+
+        showError("세션은 만들어졌지만 저장되지 않았어. Safari 사이트 데이터 삭제 후 다시 시도해줘.");
+      }catch(e){
+        console.error("callback error:", e);
+        showError(e?.message || "unknown error");
       }
-    });
-
-    statusText.textContent = "로그인 코드를 세션으로 바꾸는 중...";
-
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get("code");
-
-    if(!code){
-      showError("URL에 code 값이 없어. Redirect URL이 정확한지 확인해줘.");
-      return;
     }
 
-    const { error } = await sb.auth.exchangeCodeForSession(code);
-    if(error) throw error;
-
-    await new Promise(r => setTimeout(r, 700));
-
-    const { data: { session }, error: sessionError } = await sb.auth.getSession();
-    if(sessionError) throw sessionError;
-
-    if(session?.user){
-      window.location.replace(HOME_URL);
-      return;
-    }
-
-    showError("세션 저장까지 완료되지 않았어. Safari 사이트 데이터 삭제 후 다시 시도해줘.");
-  }catch(e){
-    console.error(e);
-    showError(e?.message || "unknown error");
-  }
-}
+    run();
   </script>
 </body>
 </html>
