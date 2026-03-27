@@ -1,41 +1,169 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-<meta charset="UTF-8">
-<title>callback</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+  <title>로그인 처리 중</title>
+  <style>
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      background:linear-gradient(135deg,#6366f1,#06b6d4);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    .card{
+      width:100%;
+      max-width:380px;
+      background:rgba(255,255,255,.97);
+      border-radius:28px;
+      box-shadow:0 16px 40px rgba(0,0,0,.18);
+      padding:28px;
+      text-align:center;
+    }
+    .logo{font-size:64px;line-height:1;margin-bottom:12px}
+    .title{font-size:22px;font-weight:900}
+    .sub{
+      margin-top:10px;
+      color:#64748b;
+      font-size:13px;
+      line-height:1.7;
+      word-break:break-all;
+    }
+    .error{
+      margin-top:14px;
+      background:#fff7ed;
+      border:1px solid #fed7aa;
+      color:#9a3412;
+      padding:12px 14px;
+      border-radius:16px;
+      text-align:left;
+      font-size:13px;
+      line-height:1.6;
+      display:none;
+      word-break:break-all;
+    }
+    .btn{
+      margin-top:14px;
+      border:none;
+      border-radius:16px;
+      padding:14px 16px;
+      cursor:pointer;
+      font-weight:800;
+      background:linear-gradient(135deg,#6366f1,#8b5cf6);
+      color:#fff;
+      width:100%;
+      display:none;
+    }
+  </style>
 </head>
 <body>
+  <div class="card">
+    <div class="logo">⚡</div>
+    <div class="title">로그인 처리 중...</div>
+    <div class="sub" id="statusText">세션을 확인하고 있어.</div>
+    <div class="error" id="errorBox"></div>
+    <button class="btn" id="retryBtn">처음으로 돌아가기</button>
+  </div>
 
-로그인 처리중...
+  <script src="../config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const CFG = window.ET_CONFIG || {};
+    const HOME_URL = window.location.origin + "/";
+    const statusText = document.getElementById("statusText");
+    const errorBox = document.getElementById("errorBox");
+    const retryBtn = document.getElementById("retryBtn");
 
-<script src="../config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    function showError(msg){
+      statusText.textContent = "로그인 완료를 마무리하지 못했어.";
+      errorBox.style.display = "block";
+      errorBox.textContent = msg;
+      retryBtn.style.display = "block";
+    }
 
-<script>
-const sb = supabase.createClient(
-  window.ET_CONFIG.SUPABASE_URL,
-  window.ET_CONFIG.SUPABASE_ANON_KEY
-);
+    retryBtn.onclick = () => {
+      window.location.replace(HOME_URL);
+    };
 
-(async () => {
-  const url = new URL(location.href);
-  const code = url.searchParams.get("code");
+    function timeoutPromise(ms, label){
+      return new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(label)), ms)
+      );
+    }
 
-  if(!code){
-    document.body.innerText = "code 없음 (설정 문제)";
-    return;
-  }
+    async function wait(ms){
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
 
-  const { error } = await sb.auth.exchangeCodeForSession(code);
+    async function run(){
+      try {
+        if (!CFG.SUPABASE_URL || !CFG.SUPABASE_ANON_KEY || CFG.SUPABASE_ANON_KEY.includes("여기에_네_anon_public_key_넣기")) {
+          showError("config.js에서 SUPABASE_ANON_KEY를 실제 anon public key로 바꿔줘.");
+          return;
+        }
 
-  if(error){
-    document.body.innerText = "에러: " + error.message;
-    return;
-  }
+        if (!window.supabase || typeof window.supabase.createClient !== "function") {
+          showError("Supabase 라이브러리를 불러오지 못했어.");
+          return;
+        }
 
-  location.href = "/";
-})();
-</script>
+        const sb = window.supabase.createClient(
+          CFG.SUPABASE_URL,
+          CFG.SUPABASE_ANON_KEY,
+          {
+            auth: {
+              flowType: "pkce",
+              detectSessionInUrl: false,
+              persistSession: true,
+              autoRefreshToken: true,
+              storageKey: "et_auth"
+            }
+          }
+        );
 
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+
+        if (!code) {
+          showError("URL에 code 값이 없어. Supabase Redirect URLs와 callback 경로를 다시 확인해줘.");
+          return;
+        }
+
+        statusText.textContent = "로그인 코드를 세션으로 바꾸는 중...";
+        const exchangeResult = await Promise.race([
+          sb.auth.exchangeCodeForSession(code),
+          timeoutPromise(10000, "exchange timeout")
+        ]);
+
+        if (exchangeResult.error) throw exchangeResult.error;
+
+        statusText.textContent = "세션 저장 확인 중...";
+        await wait(700);
+
+        const sessionResult = await Promise.race([
+          sb.auth.getSession(),
+          timeoutPromise(10000, "session timeout")
+        ]);
+
+        if (sessionResult.error) throw sessionResult.error;
+
+        if (sessionResult.data?.session?.user) {
+          window.location.replace(HOME_URL);
+          return;
+        }
+
+        showError("세션은 만들어졌지만 저장되지 않았어. Safari 사이트 데이터를 지우고 다시 시도해줘.");
+      } catch (e) {
+        console.error(e);
+        showError(e?.message || "unknown error");
+      }
+    }
+
+    run();
+  </script>
 </body>
 </html>
