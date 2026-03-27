@@ -16,9 +16,13 @@
   const g=ctx.createLinearGradient(0,0,512,512);
   g.addColorStop(0,"#6366f1");g.addColorStop(1,"#06b6d4");
   ctx.fillStyle=g;
-  ctx.beginPath();
-  ctx.roundRect(0,0,512,512,100);
-  ctx.fill();
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(0,0,512,512,100);
+    ctx.fill();
+  } else {
+    ctx.fillRect(0,0,512,512);
+  }
   ctx.font="300px serif";
   ctx.textAlign="center";
   ctx.textBaseline="middle";
@@ -33,7 +37,8 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;overscroll-behavior:none;}
-textarea,input{font-family:inherit;}
+textarea,input,button{font-family:inherit;}
+button{touch-action:manipulation;}
 </style>
 </head>
 <body>
@@ -43,14 +48,9 @@ const {useState,useEffect,useRef} = React;
 
 // ── Supabase 설정 ──
 const SUPABASE_URL = "https://ynjohdnpxeborztjhvpy.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inluam9oZG5weGVib3J6dGpodnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTEzNjUsImV4cCI6MjA5MDEyNzM2NX0.2Qn4ZvP4tIetCWnZDRTqjY1CVKSmJ-VBm1X8Tb-cYnA";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
-});
+const SUPABASE_ANON_KEY = "<SECRET>";
+const REDIRECT_URL = "https://energy-tracker-lac.vercel.app"; // 네 실제 배포 주소로 유지
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 async function dbLoad(userId) {
   const { data, error } = await supabase
@@ -60,39 +60,42 @@ async function dbLoad(userId) {
     .maybeSingle();
 
   if (error) {
-    console.error("dbLoad error", error);
+    console.error("dbLoad error:", error);
     return null;
   }
-
   return data || null;
 }
+
 async function dbSave(userId, data, memo) {
   const { error } = await supabase
     .from("tracker_data")
     .upsert({ user_id: userId, data, memo }, { onConflict: "user_id" });
 
   if (error) {
-    console.error("dbSave error", error);
+    console.error("dbSave error:", error);
   }
 }
+
 async function signInWithGoogle() {
-  const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo }
+    options: { redirectTo: REDIRECT_URL }
   });
 
   if (error) {
-    console.error("signInWithGoogle error", error);
-    alert("로그인 중 오류가 발생했어요.");
+    console.error("Google sign-in error:", error);
+    alert("구글 로그인 중 오류가 발생했어.");
   }
 }
+
 async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) {
-    console.error("signOut error", error);
-    alert("로그아웃 중 오류가 발생했어요.");
+    console.error("signOut error:", error);
+    alert("로그아웃 중 오류가 발생했어.");
+    return;
   }
+  window.location.href = REDIRECT_URL;
 }
 
 const QUESTIONS = [
@@ -118,17 +121,22 @@ function matchColor(matched, total) {
   if (r >= 0.3) return {dot:"#eab308", bg:"#fefce8", label:"비슷"};
   return {dot:"#ef4444", bg:"#fef2f2", label:"안 맞음"};
 }
+
 function calcLevel(a) {
   const {sleep_hours,sleep_quality,fatigue,mood,motivation,stress} = a;
   const s = ((sleep_hours/10)*5 + sleep_quality + (6-fatigue) + mood + motivation + (6-stress)) / 6;
   return s<=2?0:s<=3?1:s<=4?2:3;
 }
-function todayKey() { return new Date().toISOString().slice(0,10); }
+
+function todayKey() {
+  return new Date().toISOString().slice(0,10);
+}
 
 function useSwipeLR(onLeft, onRight) {
   const ref = useRef(null), sx = useRef(null);
   useEffect(() => {
-    const el = ref.current; if (!el) return;
+    const el = ref.current;
+    if (!el) return;
     const s = e => { sx.current = (e.touches?.[0]||e).clientX; };
     const end = e => {
       if (sx.current===null) return;
@@ -138,12 +146,14 @@ function useSwipeLR(onLeft, onRight) {
     };
     el.addEventListener("touchstart",s,{passive:true});
     el.addEventListener("touchend",end,{passive:true});
-    return () => { el.removeEventListener("touchstart",s); el.removeEventListener("touchend",end); };
+    return () => {
+      el.removeEventListener("touchstart",s);
+      el.removeEventListener("touchend",end);
+    };
   }, [onLeft, onRight]);
   return ref;
 }
 
-// ── Google 로그인 화면 ──
 function LoginScreen() {
   return (
     <div style={{minHeight:"100dvh",background:"linear-gradient(135deg,#6366f1,#06b6d4)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
@@ -163,7 +173,6 @@ function LoginScreen() {
   );
 }
 
-// ── 날짜 상세 패널 ──
 function DayDetail({dateKey, history, getMatchStats, memo, tasks}) {
   const rec = history[dateKey], lvl = rec ? LEVELS[rec.level] : null;
   const stats = getMatchStats(dateKey), mc = stats.total>0 ? matchColor(stats.matched, stats.total) : null;
@@ -204,7 +213,6 @@ function DayDetail({dateKey, history, getMatchStats, memo, tasks}) {
   );
 }
 
-// ── 월별 캘린더 ──
 function MonthCalendar({history, getMatchStats, memo, tasks}) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -256,16 +264,24 @@ function MonthCalendar({history, getMatchStats, memo, tasks}) {
   );
 }
 
-// ── 할일 카드 ──
 function TaskCard({task, onUrgent, onMatch, onDelete, onDateChange}) {
   const startX = useRef(null);
   const [offset, setOffset] = useState(0);
   const [deleted, setDeleted] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
+
   function onTS(e) { startX.current = e.touches[0].clientX; }
-  function onTM(e) { if(startX.current===null)return; const dx=e.touches[0].clientX-startX.current; if(dx<0)setOffset(Math.max(dx,-80)); }
-  function onTE() { if(offset<-60){setDeleted(true);setTimeout(onDelete,250);}else setOffset(0); startX.current=null; }
+  function onTM(e) {
+    if(startX.current===null)return;
+    const dx=e.touches[0].clientX-startX.current;
+    if(dx<0)setOffset(Math.max(dx,-80));
+  }
+  function onTE() {
+    if(offset<-60){setDeleted(true);setTimeout(onDelete,250);}else setOffset(0);
+    startX.current=null;
+  }
   if(deleted) return null;
+
   const isToday = (task.date||todayKey()) === todayKey();
   return (
     <div style={{position:"relative",overflow:"hidden",borderRadius:16}}>
@@ -292,7 +308,6 @@ function TaskCard({task, onUrgent, onMatch, onDelete, onDateChange}) {
   );
 }
 
-// ── 메인 앱 ──
 function App() {
   const [user, setUser] = useState(null);
   const [data, setData] = useState({history:{}, tasks:[]});
@@ -314,55 +329,63 @@ function App() {
     let mounted = true;
 
     async function init() {
-      const { data: { session }, error } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error("getSession error", error);
-      }
-
-      const currentUser = session?.user || null;
-      if (!mounted) return;
-
-      setUser(currentUser);
-
-      if (currentUser) {
-        const saved = await dbLoad(currentUser.id);
-        if (!mounted) return;
-        if (saved) {
-          setData(saved.data || {history:{}, tasks:[]});
-          setMemo(saved.memo || {});
+      try {
+        const { data: sessionData, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("getSession error:", error);
         }
-      }
 
-      if (mounted) setReady(true);
+        const currentUser = sessionData?.session?.user || null;
+        if (!mounted) return;
+
+        setUser(currentUser);
+
+        if (currentUser) {
+          const saved = await dbLoad(currentUser.id);
+          if (!mounted) return;
+          setData(saved?.data || {history:{}, tasks:[]});
+          setMemo(saved?.memo || {});
+        }
+      } catch (e) {
+        console.error("init error:", e);
+      } finally {
+        if (mounted) setReady(true);
+      }
     }
 
     init();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const currentUser = session?.user || null;
-      if (!mounted) return;
-
-      setUser(currentUser);
-
-      if (currentUser) {
-        const saved = await dbLoad(currentUser.id);
-        if (!mounted) return;
-        setData(saved?.data || {history:{}, tasks:[]});
-        setMemo(saved?.memo || {});
-      } else {
-        setData({history:{}, tasks:[]});
-        setMemo({});
-        setView("main");
-        setTab("home");
-      }
-
+    const timeout = setTimeout(() => {
       if (mounted) setReady(true);
+    }, 4000);
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        const currentUser = session?.user || null;
+        if (!mounted) return;
+
+        setUser(currentUser);
+
+        if (currentUser) {
+          const saved = await dbLoad(currentUser.id);
+          if (!mounted) return;
+          setData(saved?.data || {history:{}, tasks:[]});
+          setMemo(saved?.memo || {});
+        } else {
+          setData({history:{}, tasks:[]});
+          setMemo({});
+        }
+      } catch (e) {
+        console.error("auth state error:", e);
+      } finally {
+        if (mounted) setReady(true);
+      }
     });
 
     return () => {
       mounted = false;
-      authListener?.subscription?.unsubscribe?.();
+      clearTimeout(timeout);
+      listener?.subscription?.unsubscribe();
     };
   }, []);
 
@@ -377,29 +400,62 @@ function App() {
   }
 
   function answer(val) {
-    const q = QUESTIONS[step], next = {...answers, [q.id]:val};
-    if (step < QUESTIONS.length-1) { setAnswers(next); setStep(s=>s+1); }
-    else { const li=calcLevel(next); setData(d=>({...d,history:{...d.history,[today]:{answers:next,level:li,time:new Date().toISOString()}}})); setAnswers(next); setView("result"); }
+    const q = QUESTIONS[step];
+    const next = {...answers, [q.id]:val};
+    if (step < QUESTIONS.length-1) {
+      setAnswers(next);
+      setStep(s=>s+1);
+    } else {
+      const li=calcLevel(next);
+      setData(d=>({...d,history:{...d.history,[today]:{answers:next,level:li,time:new Date().toISOString()}}}));
+      setAnswers(next);
+      setView("result");
+    }
   }
+
   function addTask() {
     if (!newTask.trim()) return;
     setData(d=>({...d,tasks:[...d.tasks,{id:Date.now(),text:newTask.trim(),urgent:false,matched:null,date:today}]}));
     setNewTask("");
   }
+
   function toggleUrgent(id) {
-    setData(d=>{const tasks=d.tasks.map(t=>t.id===id?{...t,urgent:!t.urgent}:t); return {...d,tasks:[...tasks.filter(t=>t.urgent),...tasks.filter(t=>!t.urgent)]};});
+    setData(d=>{
+      const tasks=d.tasks.map(t=>t.id===id?{...t,urgent:!t.urgent}:t);
+      return {...d,tasks:[...tasks.filter(t=>t.urgent),...tasks.filter(t=>!t.urgent)]};
+    });
   }
-  function setMatch(id,v) { setData(d=>({...d,tasks:d.tasks.map(t=>t.id===id?{...t,matched:t.matched===v?null:v}:t)})); }
-  function setTaskDate(id,date) { setData(d=>({...d,tasks:d.tasks.map(t=>t.id===id?{...t,date}:t)})); }
-  function delTask(id) { setData(d=>({...d,tasks:d.tasks.filter(t=>t.id!==id)})); }
-  function updateMemo(k,t) { setMemo(m=>({...m,[k]:t})); }
+
+  function setMatch(id,v) {
+    setData(d=>({...d,tasks:d.tasks.map(t=>t.id===id?{...t,matched:t.matched===v?null:v}:t)}));
+  }
+
+  function setTaskDate(id,date) {
+    setData(d=>({...d,tasks:d.tasks.map(t=>t.id===id?{...t,date}:t)}));
+  }
+
+  function delTask(id) {
+    setData(d=>({...d,tasks:d.tasks.filter(t=>t.id!==id)}));
+  }
+
+  function updateMemo(k,t) {
+    setMemo(m=>({...m,[k]:t}));
+  }
 
   const checkRef = useSwipeLR(()=>step<QUESTIONS.length-1&&setStep(s=>s+1), ()=>step>0&&setStep(s=>s-1));
   const histKeys = Object.keys(data.history).sort().reverse();
   const todayStats = getMatchStats(today);
   const todayMC = matchColor(todayStats.matched, todayStats.total);
 
-  if (!ready) return <div style={{minHeight:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#6366f1,#06b6d4)"}}><div style={{fontSize:48}}>⚡</div></div>;
+  if (!ready) {
+    return (
+      <div style={{minHeight:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#6366f1,#06b6d4)",flexDirection:"column",gap:12,color:"#fff"}}>
+        <div style={{fontSize:48}}>⚡</div>
+        <div style={{fontSize:14,opacity:0.9}}>불러오는 중...</div>
+      </div>
+    );
+  }
+
   if (!user) return <LoginScreen />;
 
   if (view==="check") {
@@ -512,7 +568,7 @@ function App() {
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {data.tasks.length===0&&<div style={{color:"#cbd5e1",textAlign:"center",marginTop:32}}>아직 할 일이 없어요</div>}
-            {data.tasks.map(t=><TaskCard key={t.id} task={t} onUrgent={()=>toggleUrgent(t.id)} onMatch={v=>setMatch(t.id,v)} onDelete={()=>delTask(t.id)} onDateChange={date=>setTaskDate(t.id,date)}/>)}
+            {data.tasks.map(t=><TaskCard key={t.id} task={t} onUrgent={()=>toggleUrgent(t.id)} onMatch={v=>setMatch(t.id,v)} onDelete={()=>delTask(t.id)} onDateChange={date=>setTaskDate(t.id,date)}/>) }
           </div>
         </>}
 
@@ -553,7 +609,7 @@ function App() {
       </div>
 
       <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#fff",borderTop:"1px solid #f1f5f9",display:"flex",padding:"10px 0 20px",zIndex:100}}>
-        {[["home","🏠","홈"],["tasks","📋","할 일"],["history","📅","기록"]].map(([id,emoji,label])=>(
+        {[["home","🏠","홈"],["tasks","📋","할 일"],["history","📅","기록"]].map(([id,emoji,label])=> (
           <button key={id} onClick={()=>setTab(id)} style={{flex:1,background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
             <span style={{fontSize:22}}>{emoji}</span>
             <span style={{fontSize:11,fontWeight:700,color:tab===id?"#6366f1":"#94a3b8"}}>{label}</span>
