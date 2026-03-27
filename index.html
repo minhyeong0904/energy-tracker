@@ -336,6 +336,8 @@ function App() {
   if (!ready) return <div style={{minHeight:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#6366f1,#06b6d4)"}}><div style={{fontSize:48}}>⚡</div></div>;
   if (!user) return <LoginScreen />;
 
+  const password = null; // 하위 호환용 더미
+
   if (view==="check") {
     const q = QUESTIONS[step];
     return (
