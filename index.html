@@ -44,21 +44,55 @@ const {useState,useEffect,useRef} = React;
 // ── Supabase 설정 ──
 const SUPABASE_URL = "https://ynjohdnpxeborztjhvpy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inluam9oZG5weGVib3J6dGpodnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTEzNjUsImV4cCI6MjA5MDEyNzM2NX0.2Qn4ZvP4tIetCWnZDRTqjY1CVKSmJ-VBm1X8Tb-cYnA";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+});
 
 async function dbLoad(userId) {
-  const { data } = await supabase.from("tracker_data").select("data, memo").eq("user_id", userId).single();
+  const { data, error } = await supabase
+    .from("tracker_data")
+    .select("data, memo")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("dbLoad error", error);
+    return null;
+  }
+
   return data || null;
 }
 async function dbSave(userId, data, memo) {
-  await supabase.from("tracker_data").upsert({ user_id: userId, data, memo }, { onConflict: "user_id" });
+  const { error } = await supabase
+    .from("tracker_data")
+    .upsert({ user_id: userId, data, memo }, { onConflict: "user_id" });
+
+  if (error) {
+    console.error("dbSave error", error);
+  }
 }
 async function signInWithGoogle() {
-  await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } });
+  const redirectTo = window.location.origin + window.location.pathname;
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo }
+  });
+
+  if (error) {
+    console.error("signInWithGoogle error", error);
+    alert("로그인 중 오류가 발생했어요.");
+  }
 }
 async function signOut() {
-  await supabase.auth.signOut();
-  window.location.reload();
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    console.error("signOut error", error);
+    alert("로그아웃 중 오류가 발생했어요.");
+  }
 }
 
 const QUESTIONS = [
@@ -276,34 +310,66 @@ function App() {
   const todayRec = data.history[today];
   const lvl = todayRec != null ? LEVELS[todayRec.level] : null;
 
-  // 자동 로그인
   useEffect(() => {
-    const savedPw = localStorage.getItem("et_pw");
-    if (savedPw) {
-      cloudLoad(savedPw).then(r => {
-        if (r) { setData(r.data||{history:{},tasks:[]}); setMemo(r.memo||{}); }
-        setPassword(savedPw);
-        setReady(true);
-      });
-    } else {
-      setReady(true);
+    let mounted = true;
+
+    async function init() {
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error("getSession error", error);
+      }
+
+      const currentUser = session?.user || null;
+      if (!mounted) return;
+
+      setUser(currentUser);
+
+      if (currentUser) {
+        const saved = await dbLoad(currentUser.id);
+        if (!mounted) return;
+        if (saved) {
+          setData(saved.data || {history:{}, tasks:[]});
+          setMemo(saved.memo || {});
+        }
+      }
+
+      if (mounted) setReady(true);
     }
+
+    init();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const currentUser = session?.user || null;
+      if (!mounted) return;
+
+      setUser(currentUser);
+
+      if (currentUser) {
+        const saved = await dbLoad(currentUser.id);
+        if (!mounted) return;
+        setData(saved?.data || {history:{}, tasks:[]});
+        setMemo(saved?.memo || {});
+      } else {
+        setData({history:{}, tasks:[]});
+        setMemo({});
+        setView("main");
+        setTab("home");
+      }
+
+      if (mounted) setReady(true);
+    });
+
+    return () => {
+      mounted = false;
+      authListener?.subscription?.unsubscribe?.();
+    };
   }, []);
 
-  // 클라우드 자동 저장
   useEffect(() => {
-    if (!password || !ready) return;
-    cloudSave(password, data, memo);
-    try { localStorage.setItem("et_v6", JSON.stringify(data)); } catch {}
-  }, [data, memo]);
-
-  function handleUnlock(pw, initData, initMemo) {
-    localStorage.setItem("et_pw", pw);
-    setPassword(pw);
-    setData(initData);
-    setMemo(initMemo);
-    setReady(true);
-  }
+    if (!ready || !user) return;
+    dbSave(user.id, data, memo);
+  }, [ready, user, data, memo]);
 
   function getMatchStats(k) {
     const dt = data.tasks.filter(t => (t.date||today)===k && t.matched!==null);
@@ -336,14 +402,12 @@ function App() {
   if (!ready) return <div style={{minHeight:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#6366f1,#06b6d4)"}}><div style={{fontSize:48}}>⚡</div></div>;
   if (!user) return <LoginScreen />;
 
-  const password = null; // 하위 호환용 더미
-
   if (view==="check") {
     const q = QUESTIONS[step];
     return (
       <div ref={checkRef} style={{minHeight:"100dvh",background:"#0f0f1a",display:"flex",flexDirection:"column",padding:"48px 24px 32px",userSelect:"none"}}>
         <div style={{height:4,background:"#1e1e2e",borderRadius:4,marginBottom:32}}>
-          <div style={{height:4,width:`${(step/QUESTIONS.length)*100}%`,background:"linear-gradient(90deg,#6366f1,#06b6d4)",borderRadius:4,transition:"width .3s"}}/>
+          <div style={{height:4,width:`${((step+1)/QUESTIONS.length)*100}%`,background:"linear-gradient(90deg,#6366f1,#06b6d4)",borderRadius:4,transition:"width .3s"}}/>
         </div>
         <div style={{color:"#6366f1",fontWeight:700,fontSize:13,marginBottom:8}}>{step+1} / {QUESTIONS.length}</div>
         <div style={{fontSize:52,marginBottom:12}}>{q.emoji}</div>
