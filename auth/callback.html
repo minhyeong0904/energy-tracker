@@ -44,48 +44,55 @@
     async function wait(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
     async function run(){
-      try{
-        if(SUPABASE_ANON_KEY==="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inluam9oZG5weGVib3J6dGpodnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTEzNjUsImV4cCI6MjA5MDEyNzM2NX0.2Qn4ZvP4tIetCWnZDRTqjY1CVKSmJ-VBm1X8Tb-cYnA"){
-          showError("callback.html 안의 SUPABASE_ANON_KEY를 실제 anon public key로 바꿔줘.");
-          return;
-        }
-        if(!window.supabase || typeof window.supabase.createClient!=="function"){
-          showError("Supabase 라이브러리를 불러오지 못했어.");
-          return;
-        }
-
-        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:"et_auth"}
-        });
-
-        statusText.textContent="로그인 코드를 세션으로 바꾸는 중...";
-        const url = new URL(window.location.href);
-        const code = url.searchParams.get("code");
-
-        if(code){
-          const { error } = await sb.auth.exchangeCodeForSession(code);
-          if(error) throw error;
-        }
-
-        statusText.textContent="세션 저장을 확인하는 중...";
-        for(let i=0;i<8;i++){
-          const { data:{ session }, error } = await sb.auth.getSession();
-          if(error) throw error;
-          if(session?.user){
-            window.location.replace(HOME_URL);
-            return;
-          }
-          await wait(400);
-        }
-
-        showError("세션을 저장하지 못했어. Supabase Site URL, Redirect URLs, callback 경로를 다시 확인해줘.");
-      }catch(e){
-        console.error(e);
-        showError(e?.message || "unknown error");
-      }
+  try{
+    if(SUPABASE_ANON_KEY==="PASTE_YOUR_REAL_ANON_KEY_HERE"){
+      showError("callback.html 안의 SUPABASE_ANON_KEY를 실제 anon public key로 바꿔줘.");
+      return;
     }
 
-    run();
+    if(!window.supabase || typeof window.supabase.createClient!=="function"){
+      showError("Supabase 라이브러리를 불러오지 못했어.");
+      return;
+    }
+
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth:{
+        persistSession:true,
+        autoRefreshToken:true,
+        detectSessionInUrl:false,
+        storageKey:"et_auth"
+      }
+    });
+
+    statusText.textContent = "로그인 코드를 세션으로 바꾸는 중...";
+
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("code");
+
+    if(!code){
+      showError("URL에 code 값이 없어. Redirect URL이 정확한지 확인해줘.");
+      return;
+    }
+
+    const { error } = await sb.auth.exchangeCodeForSession(code);
+    if(error) throw error;
+
+    await new Promise(r => setTimeout(r, 700));
+
+    const { data: { session }, error: sessionError } = await sb.auth.getSession();
+    if(sessionError) throw sessionError;
+
+    if(session?.user){
+      window.location.replace(HOME_URL);
+      return;
+    }
+
+    showError("세션 저장까지 완료되지 않았어. Safari 사이트 데이터 삭제 후 다시 시도해줘.");
+  }catch(e){
+    console.error(e);
+    showError(e?.message || "unknown error");
+  }
+}
   </script>
 </body>
 </html>
