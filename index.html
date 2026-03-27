@@ -3,8 +3,6 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="에너지 트래커"/>
 <title>에너지 트래커</title>
 <link rel="apple-touch-icon" id="appIcon" href=""/>
@@ -73,7 +71,9 @@ async function dbSave(userId, data, memo) {
 
   if (error) {
     console.error("dbSave error:", error);
+    return false;
   }
+  return true;
 }
 
 async function signInWithGoogle() {
@@ -310,7 +310,7 @@ function TaskCard({task, onUrgent, onMatch, onDelete, onDateChange}) {
 
 function App() {
   const [user, setUser] = useState(null);
-  const [data, setData] = useState({history:{}, tasks:[]});
+  const [data, setData] = useState(EMPTY_DATA);
   const [memo, setMemo] = useState({});
   const [ready, setReady] = useState(false);
   const [view, setView] = useState("main");
@@ -320,6 +320,9 @@ function App() {
   const [historyTab, setHistoryTab] = useState("weekly");
   const [tab, setTab] = useState("home");
   const [expandedDay, setExpandedDay] = useState(null);
+  const [saveState, setSaveState] = useState("idle");
+  const [saveMessage, setSaveMessage] = useState("로컬 백업 준비됨");
+  const [lastSavedAt, setLastSavedAt] = useState(null);
 
   const today = todayKey();
   const todayRec = data.history[today];
@@ -330,6 +333,15 @@ function App() {
 
     async function init() {
       try {
+        const backup = loadLocalBackup();
+        if (backup && mounted) {
+          setData(backup.data || EMPTY_DATA);
+          setMemo(backup.memo || {});
+          setLastSavedAt(backup.savedAt || null);
+          setSaveState("local");
+          setSaveMessage(backup.savedAt ? `로컬 백업 복원됨 · ${new Date(backup.savedAt).toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"})}` : "로컬 백업 복원됨");
+        }
+
         const { data: sessionData, error } = await supabase.auth.getSession();
         if (error) {
           console.error("getSession error:", error);
@@ -343,11 +355,42 @@ function App() {
         if (currentUser) {
           const saved = await dbLoad(currentUser.id);
           if (!mounted) return;
-          setData(saved?.data || {history:{}, tasks:[]});
-          setMemo(saved?.memo || {});
+
+          if (saved) {
+            setData(saved.data || EMPTY_DATA);
+            setMemo(saved.memo || {});
+            const backupTime = saveLocalBackup(saved.data || EMPTY_DATA, saved.memo || {});
+            setLastSavedAt(backupTime || new Date().toISOString());
+            setSaveState("saved");
+            setSaveMessage("서버 데이터 불러옴");
+          } else if (backup) {
+            setSaveState("local");
+            setSaveMessage("서버 데이터 없음 · 로컬 백업 사용 중");
+          } else {
+            setData(EMPTY_DATA);
+            setMemo({});
+            setSaveState("idle");
+            setSaveMessage("새 기록 시작 준비됨");
+          }
+        } else if (backup) {
+          setSaveState("local");
+          setSaveMessage("로그인 전 · 로컬 백업만 보관 중");
         }
       } catch (e) {
         console.error("init error:", e);
+        if (mounted) {
+          const backup = loadLocalBackup();
+          if (backup) {
+            setData(backup.data || EMPTY_DATA);
+            setMemo(backup.memo || {});
+            setLastSavedAt(backup.savedAt || null);
+            setSaveState("local");
+            setSaveMessage("초기화 오류 · 로컬 백업 복원됨");
+          } else {
+            setSaveState("error");
+            setSaveMessage("불러오기 오류가 있었어");
+          }
+        }
       } finally {
         if (mounted) setReady(true);
       }
@@ -369,14 +412,43 @@ function App() {
         if (currentUser) {
           const saved = await dbLoad(currentUser.id);
           if (!mounted) return;
-          setData(saved?.data || {history:{}, tasks:[]});
-          setMemo(saved?.memo || {});
+
+          if (saved) {
+            setData(saved.data || EMPTY_DATA);
+            setMemo(saved.memo || {});
+            const backupTime = saveLocalBackup(saved.data || EMPTY_DATA, saved.memo || {});
+            setLastSavedAt(backupTime || new Date().toISOString());
+            setSaveState("saved");
+            setSaveMessage("로그인 완료 · 서버 데이터 동기화됨");
+          } else {
+            const backup = loadLocalBackup();
+            if (backup) {
+              setData(backup.data || EMPTY_DATA);
+              setMemo(backup.memo || {});
+              setLastSavedAt(backup.savedAt || null);
+              setSaveState("local");
+              setSaveMessage("서버 데이터 없음 · 로컬 백업 사용 중");
+            } else {
+              setData(EMPTY_DATA);
+              setMemo({});
+              setSaveState("idle");
+              setSaveMessage("새 기록 시작 준비됨");
+            }
+          }
         } else {
-          setData({history:{}, tasks:[]});
-          setMemo({});
+          const backup = loadLocalBackup();
+          setData(backup?.data || EMPTY_DATA);
+          setMemo(backup?.memo || {});
+          setLastSavedAt(backup?.savedAt || null);
+          setSaveState(backup ? "local" : "idle");
+          setSaveMessage(backup ? "로그아웃됨 · 로컬 백업 유지 중" : "로그인하면 서버에 저장돼");
         }
       } catch (e) {
         console.error("auth state error:", e);
+        if (mounted) {
+          setSaveState("error");
+          setSaveMessage("로그인 상태 확인 중 오류가 있었어");
+        }
       } finally {
         if (mounted) setReady(true);
       }
@@ -390,8 +462,47 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!ready || !user) return;
-    dbSave(user.id, data, memo);
+    if (!ready) return;
+    const backupTime = saveLocalBackup(data, memo);
+    if (backupTime) {
+      setLastSavedAt(backupTime);
+    }
+
+    if (!user) {
+      setSaveState("local");
+      setSaveMessage("로컬 백업 저장됨");
+      return;
+    }
+
+    let cancelled = false;
+    setSaveState("saving");
+    setSaveMessage("저장 중...");
+
+    const timer = setTimeout(async () => {
+      try {
+        const ok = await dbSave(user.id, data, memo);
+        if (cancelled) return;
+
+        if (ok === false) {
+          setSaveState("warning");
+          setSaveMessage("서버 저장 실패 · 로컬 백업만 저장됨");
+        } else {
+          setSaveState("saved");
+          setSaveMessage("서버 + 로컬에 저장됨");
+        }
+      } catch (e) {
+        console.error("save effect error:", e);
+        if (!cancelled) {
+          setSaveState("warning");
+          setSaveMessage("저장 오류 · 로컬 백업만 저장됨");
+        }
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [ready, user, data, memo]);
 
   function getMatchStats(k) {
@@ -446,6 +557,14 @@ function App() {
   const histKeys = Object.keys(data.history).sort().reverse();
   const todayStats = getMatchStats(today);
   const todayMC = matchColor(todayStats.matched, todayStats.total);
+  const saveTone = {
+    idle: {bg:"#f8fafc", color:"#64748b", dot:"#94a3b8"},
+    saving: {bg:"#eff6ff", color:"#2563eb", dot:"#3b82f6"},
+    saved: {bg:"#ecfdf5", color:"#059669", dot:"#10b981"},
+    local: {bg:"#fefce8", color:"#a16207", dot:"#eab308"},
+    warning: {bg:"#fff7ed", color:"#ea580c", dot:"#f97316"},
+    error: {bg:"#fef2f2", color:"#dc2626", dot:"#ef4444"},
+  }[saveState] || {bg:"#f8fafc", color:"#64748b", dot:"#94a3b8"};
 
   if (!ready) {
     return (
@@ -512,9 +631,16 @@ function App() {
 
         {tab==="home" && <>
           <div style={{fontSize:22,fontWeight:800,color:"#1e293b",marginBottom:4}}>⚡ 에너지 트래커</div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div style={{fontSize:13,color:"#94a3b8"}}>{today}</div>
             <button onClick={signOut} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:20,padding:"4px 12px",fontSize:12,color:"#94a3b8",cursor:"pointer"}}>로그아웃</button>
+          </div>
+          <div style={{background:saveTone.bg,borderRadius:14,padding:"10px 12px",marginBottom:20,display:"flex",alignItems:"center",gap:10,border:`1px solid ${saveTone.dot}22`}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:saveTone.dot,flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:700,color:saveTone.color}}>{saveMessage}</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{lastSavedAt ? `마지막 백업 ${new Date(lastSavedAt).toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit", second:"2-digit"})}` : "아직 저장 기록 없음"}</div>
+            </div>
           </div>
           <div style={{borderRadius:24,padding:24,marginBottom:20,background:lvl?`linear-gradient(135deg,${lvl.grad[0]},${lvl.grad[1]})`:"linear-gradient(135deg,#6366f1,#8b5cf6)",boxShadow:lvl?`0 8px 24px ${lvl.grad[0]}55`:"0 8px 24px #6366f155",color:"#fff"}}>
             {lvl ? <>
@@ -562,6 +688,10 @@ function App() {
 
         {tab==="tasks" && <>
           <div style={{fontSize:20,fontWeight:800,color:"#1e293b",marginBottom:20}}>📋 할 일</div>
+          <div style={{background:saveTone.bg,borderRadius:14,padding:"10px 12px",marginBottom:14,display:"flex",alignItems:"center",gap:10,border:`1px solid ${saveTone.dot}22`}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:saveTone.dot,flexShrink:0}}/>
+            <div style={{fontSize:12,fontWeight:700,color:saveTone.color}}>{saveMessage}</div>
+          </div>
           <div style={{display:"flex",gap:8,marginBottom:20}}>
             <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()} placeholder="할 일 추가..." style={{flex:1,border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 14px",fontSize:15,outline:"none",background:"#fff"}}/>
             <button onClick={addTask} style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",border:"none",borderRadius:14,padding:"12px 18px",fontSize:20,fontWeight:800,cursor:"pointer"}}>+</button>
@@ -620,6 +750,7 @@ function App() {
     </div>
   );
 }
+
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
