@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>callback</title>
+</head>
+<body>
+
+로그인 처리중...
+
+<script src="../config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+const sb = supabase.createClient(
+  window.ET_CONFIG.SUPABASE_URL,
+  window.ET_CONFIG.SUPABASE_ANON_KEY
+);
+
+(async () => {
+  const url = new URL(location.href);
+  const code = url.searchParams.get("code");
+
+  if(!code){
+    document.body.innerText = "code 없음 (설정 문제)";
+    return;
+  }
+
+  const { error } = await sb.auth.exchangeCodeForSession(code);
+
+  if(error){
+    document.body.innerText = "에러: " + error.message;
+    return;
+  }
+
+  location.href = "/";
+})();
+</script>
+
+</body>
+</html>
